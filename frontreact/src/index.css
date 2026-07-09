@@ -1,0 +1,129 @@
+@keyframes wt-drift {
+  0% { transform: translateX(-2%); }
+  50% { transform: translateX(2%); }
+  100% { transform: translateX(-2%); }
+}
+@keyframes wt-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.85; }
+}
+@keyframes wt-spotlight-pulse {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 0.85; transform: scale(1.08); }
+}
+
+:root {
+  --accent: #7c5cbf;
+  --accent-shadow: rgba(124, 92, 191, 0.35);
+  --seal-text: #f3ece1;
+  --seal-border: rgba(255, 255, 255, 0.25);
+  --text-primary: #f4efe6;
+  --text-secondary: rgba(244, 239, 230, 0.75);
+  --text-muted: rgba(244, 239, 230, 0.45);
+  --text-footer: rgba(244, 239, 230, 0.32);
+  --outline-border: rgba(244, 239, 230, 0.35);
+  --outline-hover-bg: rgba(244, 239, 230, 0.06);
+  --error: #d9776b;
+  --overlay-bg: #141a34;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+/* --- shared interactive primitives (hover/focus states that inline styles can't express) --- */
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--seal-text);
+  border: none;
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+  box-shadow: 0 8px 20px var(--accent-shadow);
+}
+.btn-primary:hover {
+  filter: brightness(1.08);
+}
+.btn-primary:disabled {
+  cursor: default;
+}
+
+.btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--outline-border);
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.btn-outline:hover {
+  background: var(--outline-hover-bg);
+}
+
+.btn-ghost {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: 'Noto Sans KR', sans-serif;
+}
+.btn-ghost:hover {
+  color: var(--text-primary);
+}
+
+.field-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--outline-border);
+  color: var(--text-primary);
+  font-family: 'Noto Sans KR', sans-serif;
+  outline: none;
+}
+.field-input:focus {
+  border-bottom-color: var(--accent);
+}
+
+.field-textarea {
+  background: rgba(244, 239, 230, 0.04);
+  border: 1px solid var(--outline-border);
+  color: var(--text-primary);
+  font-family: 'Noto Sans KR', sans-serif;
+  outline: none;
+  resize: vertical;
+}
+.field-textarea:focus {
+  border-color: var(--accent);
+}
+
+.link-span {
+  cursor: pointer;
+}
+.link-span:hover {
+  color: var(--accent) !important;
+}
+
+.muted-link {
+  cursor: pointer;
+}
+.muted-link:hover {
+  color: var(--text-secondary) !important;
+}
+
+.hover-row {
+  cursor: pointer;
+}
+.hover-row:hover {
+  background: var(--outline-hover-bg);
+}
+
+.hover-fade:hover {
+  color: var(--text-primary) !important;
+}
+
+button {
+  font-size: 100%;
+}
