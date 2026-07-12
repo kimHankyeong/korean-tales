@@ -23,6 +23,7 @@ import { ADVISOR_ELECTION_BY_MODE, DEFAULT_ROOM_TIMER_SETTINGS } from '@korean-t
 import {
   alivePlayers,
   canUseSkill,
+  canVoteInElection,
   checkWin,
   computeSpeechOrder,
   getPlayer,
@@ -32,8 +33,9 @@ import {
   pickRandom,
   processDawn,
   processDeathQueue,
+  resolveElectionVote,
+  resolveExecutionVote,
   resolveNightKillTarget,
-  resolveVoteOutcome,
 } from './logic';
 import type { GameContext, GameEvent, GameInput, PendingDeath } from './types';
 
@@ -85,10 +87,8 @@ export const gameMachine = setup({
     // 유효 선출 투표: 출마자는 투표권 없음(7번 섹션), 대상은 출마자여야 함
     validElectionVote: ({ context, event }) => {
       if (event.type !== 'VOTE') return false;
-      const voter = getPlayer(context.players, event.voterId);
       return (
-        !!voter?.alive &&
-        !context.candidates.includes(event.voterId) &&
+        canVoteInElection(context.players, event.voterId, context.candidates) &&
         event.targetId !== 'ABSTAIN' &&
         context.candidates.includes(event.targetId)
       );
@@ -96,18 +96,20 @@ export const gameMachine = setup({
     // 유효 선출 재투표: 후보가 동표자로 제한됨
     validElectionRevote: ({ context, event }) => {
       if (event.type !== 'VOTE') return false;
-      const voter = getPlayer(context.players, event.voterId);
       return (
-        !!voter?.alive &&
-        !context.candidates.includes(event.voterId) &&
+        canVoteInElection(context.players, event.voterId, context.candidates) &&
         event.targetId !== 'ABSTAIN' &&
         context.tieCandidates.includes(event.targetId)
       );
     },
-    // 전이 조건: 최다 득표자 단독 확정
-    voteDecided: ({ context }) => resolveVoteOutcome(context.votes).kind === 'DECIDED',
-    // 전이 조건: 득표자 없음 (처형 투표: 전원 기권 → 희생자 없이 밤으로)
-    voteNoTarget: ({ context }) => resolveVoteOutcome(context.votes).kind === 'NO_TARGET',
+    // 전이 조건: 1차 선출 투표가 확정됨 (단독 최다 또는 무득표 무작위 — 동표 재투표만 아님)
+    electionSettled: ({ context }) =>
+      resolveElectionVote(context.votes, 1, { candidates: context.candidates }).kind !== 'REVOTE',
+    // 전이 조건: 처형 투표 전원 기권 → 희생자 없이 밤으로 (5-4항 기권 규칙)
+    execNoExecution: ({ context }) =>
+      resolveExecutionVote(context.votes, 1).kind === 'NO_EXECUTION',
+    // 전이 조건: 처형 투표 최다 득표 단독 확정
+    execDecided: ({ context }) => resolveExecutionVote(context.votes, 1).kind === 'EXECUTE',
     // 전체 토론 skip 완주: 생존자 전원 (선출 토론·낮 토론 공용)
     allAliveSkipComplete: ({ context, event }) =>
       event.type === 'SKIP' && skipCompletes(alivePlayers(context.players), context.skipVotes, event.playerId),
@@ -244,25 +246,34 @@ export const gameMachine = setup({
       if (event.type !== 'VOTE') return {};
       return { votes: { ...context.votes, [event.voterId]: event.targetId } };
     }),
-    // 최다 득표자를 조언자로 확정
-    electAdvisor: assign(({ context }) => {
-      const outcome = resolveVoteOutcome(context.votes);
-      return outcome.kind === 'DECIDED' ? { advisorId: outcome.targetId, votes: {} } : {};
+    // 1차 선출 결과 적용 — 단독 최다면 확정, 무득표면 후보 중 무작위 (동표는 guard가 재투표로 분기)
+    applyElectionRound1: assign(({ context }) => {
+      const result = resolveElectionVote(context.votes, 1, { candidates: context.candidates });
+      if (result.kind === 'REVOTE') return {};
+      return {
+        advisorId:
+          result.kind === 'ELECTED' ? result.advisorId : pickRandom(result.pool, context.rng),
+        votes: {},
+      };
     }),
-    // 재투표에서도 동표(또는 무득표) → 최다득표자/후보 중 무작위 선정 (7번 섹션)
-    electAdvisorRandom: assign(({ context }) => {
-      const outcome = resolveVoteOutcome(context.votes);
-      const pool =
-        outcome.kind === 'TIE'
-          ? outcome.candidates
-          : context.tieCandidates.length > 0
-            ? context.tieCandidates
-            : context.candidates;
-      return { advisorId: pickRandom(pool, context.rng), votes: {} };
+    // 선출 재투표 결과 적용 — 재동표·무득표는 동표 후보 중 무작위 선정 (7번 섹션)
+    applyElectionRound2: assign(({ context }) => {
+      const result = resolveElectionVote(context.votes, 2, {
+        candidates: context.candidates,
+        tieCandidates: context.tieCandidates,
+      });
+      if (result.kind === 'REVOTE') return {}; // 2차에서는 발생하지 않음
+      return {
+        advisorId:
+          result.kind === 'ELECTED' ? result.advisorId : pickRandom(result.pool, context.rng),
+        votes: {},
+        tieCandidates: [],
+      };
     }),
-    setTieCandidates: assign(({ context }) => {
-      const outcome = resolveVoteOutcome(context.votes);
-      return outcome.kind === 'TIE' ? { tieCandidates: outcome.candidates, votes: {} } : {};
+    // 1차 선출 동표 → 동표자만 후보로 재투표 준비
+    setTieCandidatesFromElection: assign(({ context }) => {
+      const result = resolveElectionVote(context.votes, 1, { candidates: context.candidates });
+      return result.kind === 'REVOTE' ? { tieCandidates: result.candidates, votes: {} } : {};
     }),
     // 조언자 없음 확정 → 발언 순서 정순 고정
     noAdvisor: assign({ advisorId: null, advisorBroken: true }),
@@ -317,17 +328,30 @@ export const gameMachine = setup({
     }),
     // 유혹 소모 — 투표 단계 스킵과 함께 1회성 효과 종료
     consumeSeduce: assign({ seduceNextDay: false }),
-    setExecutionTarget: assign(({ context }) => {
-      const outcome = resolveVoteOutcome(context.votes);
-      return outcome.kind === 'DECIDED'
-        ? { executionTargetId: outcome.targetId, votes: {}, tieCandidates: [] }
+    // 1차 처형 투표 확정 적용 (기권 규칙·동표는 guard가 분기)
+    applyExecutionRound1: assign(({ context }) => {
+      const result = resolveExecutionVote(context.votes, 1);
+      return result.kind === 'EXECUTE'
+        ? { executionTargetId: result.targetId, votes: {}, tieCandidates: [] }
         : {};
     }),
-    // 재투표에서도 동표 → 최다득표자 중 무작위 1인 처형 (5-4항)
-    setExecutionTargetRandom: assign(({ context }) => {
-      const outcome = resolveVoteOutcome(context.votes);
-      const pool = outcome.kind === 'TIE' ? outcome.candidates : context.tieCandidates;
-      return { executionTargetId: pickRandom(pool, context.rng), votes: {}, tieCandidates: [] };
+    // 처형 재투표 적용 — 재동표(·전원 기권)는 동표 후보 중 무작위 1인 처형 (5-4항)
+    applyExecutionRound2: assign(({ context }) => {
+      const result = resolveExecutionVote(context.votes, 2, context.tieCandidates);
+      if (result.kind === 'EXECUTE')
+        return { executionTargetId: result.targetId, votes: {}, tieCandidates: [] };
+      if (result.kind === 'EXECUTE_RANDOM')
+        return {
+          executionTargetId: pickRandom(result.pool, context.rng),
+          votes: {},
+          tieCandidates: [],
+        };
+      return {};
+    }),
+    // 1차 처형 동표 → 최다득표자 동시 발언 준비
+    setTieCandidatesFromExecution: assign(({ context }) => {
+      const result = resolveExecutionVote(context.votes, 1);
+      return result.kind === 'TIE_SPEECH' ? { tieCandidates: result.candidates, votes: {} } : {};
     }),
     // 최후의 변론 종료 → 처형 사망 건 적재
     enqueueExecution: assign(({ context }) => {
@@ -547,12 +571,10 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validElectionVote', actions: 'registerVote' },
             TIME_UP: [
-              // 전이 조건: 최다 득표자 단독 → 조언자 확정 후 첫날 낮 개인 발언
-              { guard: 'voteDecided', actions: 'electAdvisor', target: '#daySpeech' },
-              // 전이 조건: 무득표 → 후보 중 무작위 선정 (문서 미정 가정)
-              { guard: 'voteNoTarget', actions: 'electAdvisorRandom', target: '#daySpeech' },
-              // 전이 조건: 동표 → 동표자만 후보로 재투표
-              { actions: 'setTieCandidates', target: 'electionRevote' },
+              // 전이 조건: 1차 선출 확정 (단독 최다 또는 무득표 무작위) → 첫날 낮 개인 발언
+              { guard: 'electionSettled', actions: 'applyElectionRound1', target: '#daySpeech' },
+              // 전이 조건: 동표 → 동표자만 후보로 재투표 (처형 투표와 동일한 동표 로직 재사용)
+              { actions: 'setTieCandidatesFromElection', target: 'electionRevote' },
             ],
           },
         },
@@ -560,10 +582,8 @@ export const gameMachine = setup({
         electionRevote: {
           on: {
             VOTE: { guard: 'validElectionRevote', actions: 'registerVote' },
-            TIME_UP: [
-              { guard: 'voteDecided', actions: 'electAdvisor', target: '#daySpeech' },
-              { actions: 'electAdvisorRandom', target: '#daySpeech' },
-            ],
+            // 재투표 — 단독 확정 또는 재동표·무득표 시 동표 후보 중 무작위 선정
+            TIME_UP: { actions: 'applyElectionRound2', target: '#daySpeech' },
           },
         },
       },
@@ -660,11 +680,11 @@ export const gameMachine = setup({
             VOTE: { guard: 'validDayVote', actions: 'registerVote' },
             TIME_UP: [
               // 전이 조건: 전원 기권(득표자 없음) → 희생자 없이 밤으로 (5-4항 기권 규칙)
-              { guard: 'voteNoTarget', target: '#night' },
+              { guard: 'execNoExecution', target: '#night' },
               // 전이 조건: 최다 득표 단독 → 최후의 변론
-              { guard: 'voteDecided', actions: 'setExecutionTarget', target: 'finalPlea' },
+              { guard: 'execDecided', actions: 'applyExecutionRound1', target: 'finalPlea' },
               // 전이 조건: 동표 → 최다득표자 동시 발언 20초
-              { actions: 'setTieCandidates', target: 'tieSpeech' },
+              { actions: 'setTieCandidatesFromExecution', target: 'tieSpeech' },
             ],
           },
         },
@@ -679,11 +699,8 @@ export const gameMachine = setup({
           entry: 'clearVotes',
           on: {
             VOTE: { guard: 'validDayRevote', actions: 'registerVote' },
-            TIME_UP: [
-              { guard: 'voteDecided', actions: 'setExecutionTarget', target: 'finalPlea' },
-              // 동표·전원 기권 모두 동표 후보 중 무작위 처형으로 수렴
-              { actions: 'setExecutionTargetRandom', target: 'finalPlea' },
-            ],
+            // 재투표 — 단독 확정 또는 재동표(·전원 기권) 시 동표 후보 중 무작위 1인 처형
+            TIME_UP: { actions: 'applyExecutionRound2', target: 'finalPlea' },
           },
         },
         // 최후의 변론 (20초) — 처형 대상자만 발언, 본인 Skip으로 즉시 사망 처리

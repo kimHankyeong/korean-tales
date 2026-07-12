@@ -1,5 +1,21 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 4 완료: 투표·스킬 판정 로직 (2026-07-13)
+
+- **동표 2라운드 공통 규칙**을 순수 함수로 추출 (`resolveTieBreak`) — 처형 투표(5-4항)와 조언자 선출(7번)이 동일 로직을 재사용
+  - `resolveExecutionVote(votes, round, tieCandidates)`: 전원 기권 → 무처형(밤 전환) / 1표라도 있으면 최다득표 처형 / 1차 동표 → 20초 동시발언(TIE_SPEECH) → 재투표 / 재동표 → 무작위(EXECUTE_RANDOM)
+  - `resolveElectionVote(votes, round, pools)`: 단독 최다 → 확정 / 1차 동표 → 재투표(REVOTE) / 재동표·무득표 → 무작위. `canVoteInElection`으로 출마자 투표권 제외
+  - 무작위 추첨은 결과에 pool만 담아 반환 — rng 실행은 머신 액션에서만 (guard 순수성 유지)
+- **스킬 상호작용 판정 순수 함수** (우선순위 주석 명시):
+  - `resolveNightKillOutcome` — 도깨비 장난 밤이면 킬 무효, 공지는 킬 없음과 동일한 "사망자 없음"(차단 비공개 보장)
+  - `isRevivableTonight` — 부활꽃은 그날 밤 악 킬 사망자만 (동반사망자·처형자·유서 사망자 제외를 cause로 판별)
+  - `compassionApplies` — 연민은 까치선비(부활 수혜자) 한정, 사망 원인 불문(멸망꽃 포함)
+  - `isTakeAlongSealed` — 멸망꽃 사망 → 동귀어진류(피 맺힌 유서) 봉인
+  - 부활자의 사용한 1회성 스킬 소모 유지는 skillUses를 절대 초기화하지 않는 것으로 보장
+- machine.ts를 위 판정 함수 기반으로 재배선 (선출/처형 재투표 전이 단순화 — 단일 전이로 수렴)
+- 테스트 **87개** 통과 (shared 15 + 서버 72: logic 36·machine 25·session 7·timer 4)
+  - 복합 케이스 포함: "장난이 있던 밤 킬은 무산 + 그 밤 지정한 길동무는 저승사자 낮 처형 시 그대로 동반 사망", 멸망꽃 유서 봉인, 멸망꽃 사망 까치선비의 연민 부활, 부활한 도깨비의 장난 소모 유지
+
 ## 세션 3 완료: 서버 권위 타이머 시스템 (2026-07-13)
 
 - `server/src/game/timer.ts` — `PhaseTimer`: 페이즈당 하나의 서버 타이머 (시작/취소/남은 시간)
@@ -59,10 +75,10 @@
 - npm workspaces 모노레포(client/server/shared), 기술 스택 세팅, CLAUDE.md, docs/requirements.md 배치
 - 게임 규칙 상수 `gameConfig.ts` 분리, 서버는 Socket.io 연결 스켈레톤만 존재
 
-## 다음 세션 할 일 (세션 4)
+## 다음 세션 할 일 (세션 5)
 
 - **방(룸)·Socket.io 연동**: 방 생성/입장 → `GameSession` 인스턴스 관리 → 소켓 이벤트를 머신 이벤트로 변환
   - `SOCKET_EVENTS.timerSync` 브로드캐스트를 실제 io.emit에 연결
   - 진영·역할별 정보 은닉(해태 투사 결과는 본인에게만, 악 채팅 격리 등) 설계
 - 또는 requirements 10번 5단계: **투표/스킬 선택 공용 UI** (client) — 레이아웃 동일, 버튼 텍스트만 분기, 기권·스킬 포기 옵션
-- 이후: 6단계 투표 결과 판정 연결 → 7단계 승리 조건(투항 30초 팀 동의·P버튼 포함)
+- 이후: 7단계 승리 조건 마무리(투항 30초 팀 동의·P버튼 이벤트 추가) → 8단계 부속 UI

@@ -378,6 +378,112 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
   });
 });
 
+describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () => {
+  /** 전원 기권으로 낮 통과 → 밤 진입 */
+  function toNight(actor: Actor) {
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor), 'ABSTAIN');
+    timeUp(actor); // → night
+  }
+
+  it('도깨비 장난이 있던 밤: 킬은 무산되지만, 그 밤 지정한 길동무는 저승사자가 낮에 처형되면 그대로 동반 사망한다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    toNight(actor);
+
+    // 밤 1: 장난 + 악 킬(p5 해태) + 저승사자 길동무 지정(p6 도깨비)
+    actor.send({ type: 'DOKKAEBI_PRANK' });
+    timeUp(actor); // → evilDiscussion
+    timeUp(actor); // → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
+    timeUp(actor); // → evilSkills
+    actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' });
+    timeUp(actor); // → dawn
+
+    // 새벽: 장난으로 킬 무효 — "사망자 없음" (차단 사실 비공개)
+    expect(player(actor, 'p5').alive).toBe(true);
+    expect(actor.getSnapshot().context.pendingDeaths).toHaveLength(0);
+
+    // 2일차 낮: 저승사자(p1) 처형 → 장난과 무관하게 길동무(p6) 동반 사망
+    actor.send({ type: 'FLOWER_PASS' });
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
+    timeUp(actor); // → finalPlea
+    timeUp(actor); // → 처형 → 사망 처리
+    expect(player(actor, 'p1').alive).toBe(false);
+    expect(player(actor, 'p6').alive).toBe(false); // 동반 사망 — 장난은 밤 킬만 막는다
+    expect(player(actor, 'p5').alive).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+  });
+
+  it('멸망꽃으로 죽은 장화홍련은 피 맺힌 유서 기회 자체가 봉인된다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    toNight(actor);
+    passNight(actor); // 킬 없는 밤 → 2일차 아침 꽃 선택
+    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    actor.send({ type: 'FLOWER_DOOM', targetId: 'p7' }); // 장화홍련 즉시 처형
+    // 유서 입력 대기 없이 곧장 낮 진행 (봉인)
+    const snap = actor.getSnapshot();
+    expect(player(actor, 'p7').alive).toBe(false);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
+    expect(snap.context.awaiting).toBeNull();
+  });
+
+  it('멸망꽃으로 죽은 까치선비도 연민으로 부활한다 (사망 원인 불문)', () => {
+    const actor = startGame();
+    skipElection(actor);
+    toNight(actor);
+    passNight(actor); // → 2일차 아침
+    actor.send({ type: 'FLOWER_DOOM', targetId: 'p8' }); // 까치선비 즉시 처형
+    expect(player(actor, 'p8').alive).toBe(false);
+    expect(actor.getSnapshot().context.scheduledRevivals).toEqual(['p8']); // 연민 예약
+    toNight(actor);
+    passNight(actor); // → 3일차 새벽: 예약 부활
+    const revived = player(actor, 'p8');
+    expect(revived.alive).toBe(true);
+    expect(revived.faction).toBe('NEUTRAL');
+  });
+
+  it('부활자의 이미 사용한 1회성 스킬은 소모된 상태로 유지된다 (도깨비 장난)', () => {
+    const actor = startGame();
+    skipElection(actor);
+    toNight(actor);
+
+    // 밤 1: 도깨비가 장난 사용 (킬 없음)
+    actor.send({ type: 'DOKKAEBI_PRANK' });
+    timeUp(actor);
+    timeUp(actor);
+    timeUp(actor);
+    timeUp(actor); // → 2일차 아침
+    actor.send({ type: 'FLOWER_PASS' });
+    toNight(actor);
+
+    // 밤 2: 악이 도깨비(p6)를 킬 — 장난은 이미 소모되어 재사용 불가
+    actor.send({ type: 'DOKKAEBI_PRANK' }); // guard가 차단해야 함
+    expect(actor.getSnapshot().context.prankUsedTonight).toBe(false);
+    timeUp(actor);
+    timeUp(actor);
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p6' });
+    timeUp(actor);
+    timeUp(actor); // → 3일차 새벽: p6 사망
+    expect(player(actor, 'p6').alive).toBe(false);
+
+    // 부활꽃으로 부활 — 사용한 장난은 복구되지 않는다
+    actor.send({ type: 'FLOWER_REVIVE', targetId: 'p6' });
+    const revived = player(actor, 'p6');
+    expect(revived.alive).toBe(true);
+    expect(revived.skillUses.prank).toBe(1); // 소모 유지
+
+    // 그 밤에도 장난 재사용 불가
+    toNight(actor);
+    actor.send({ type: 'DOKKAEBI_PRANK' });
+    expect(actor.getSnapshot().context.prankUsedTonight).toBe(false);
+  });
+});
+
 describe('승리 판정 (requirements 8번)', () => {
   it('악 진영 전원 탈락 시 즉시 게임 종료 — 선 진영 승리', () => {
     const actor = startGame();

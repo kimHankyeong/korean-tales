@@ -6,7 +6,7 @@
  * guard/action은 여기 함수들을 조합해서만 동작한다.
  */
 
-import type { Faction, InvestigationResult, SkillId } from '@korean-tales/shared';
+import type { DeathCause, Faction, InvestigationResult, SkillId } from '@korean-tales/shared';
 import { CHARACTER_BY_ID } from '@korean-tales/shared';
 import type {
   AwaitingTrigger,
@@ -79,6 +79,104 @@ export function resolveVoteOutcome(votes: Record<string, string | 'ABSTAIN'>): V
   return top.length === 1 ? { kind: 'DECIDED', targetId: top[0]! } : { kind: 'TIE', candidates: top };
 }
 
+/* ── 동표 2라운드 공통 규칙 — 처형(5-4항)·조언자 선출(7번)이 재사용 ── */
+
+/**
+ * 공통 동표 처리: 1차 동표 → 동표자들만 후보로 재대결(ESCALATE),
+ * 재투표(2차)에서도 동표 → 무작위(RANDOM). 득표자 없음은 호출부가 해석한다.
+ * 무작위 추첨 자체는 하지 않고 pool만 반환한다 — rng 실행은 액션(호출부) 몫.
+ */
+export type TieBreakResult =
+  | { kind: 'DECIDED'; targetId: string }
+  | { kind: 'ESCALATE'; candidates: string[] }
+  | { kind: 'RANDOM'; pool: string[] }
+  | { kind: 'NO_TARGET' };
+
+export function resolveTieBreak(
+  votes: Record<string, string | 'ABSTAIN'>,
+  round: 1 | 2,
+): TieBreakResult {
+  const outcome = resolveVoteOutcome(votes);
+  if (outcome.kind === 'NO_TARGET') return { kind: 'NO_TARGET' };
+  if (outcome.kind === 'DECIDED') return { kind: 'DECIDED', targetId: outcome.targetId };
+  return round === 1
+    ? { kind: 'ESCALATE', candidates: outcome.candidates }
+    : { kind: 'RANDOM', pool: outcome.candidates };
+}
+
+/* ── 처형 투표 판정 (5-4항) ────────────────────────── */
+
+export type ExecutionVoteResult =
+  /** 전원 기권 → 희생자 없이 밤 전환 (기권표가 다수여도 1표라도 있으면 처형) */
+  | { kind: 'NO_EXECUTION' }
+  | { kind: 'EXECUTE'; targetId: string }
+  /** 재투표 동표 → 최다득표자 중 무작위 1인 처형 (추첨은 호출부에서 rng로) */
+  | { kind: 'EXECUTE_RANDOM'; pool: string[] }
+  /** 1차 동표 → 최다득표자 20초 동시 발언 후 재투표 */
+  | { kind: 'TIE_SPEECH'; candidates: string[] };
+
+export function resolveExecutionVote(
+  votes: Record<string, string | 'ABSTAIN'>,
+  round: 1 | 2,
+  tieCandidates: readonly string[] = [],
+): ExecutionVoteResult {
+  const result = resolveTieBreak(votes, round);
+  switch (result.kind) {
+    case 'DECIDED':
+      return { kind: 'EXECUTE', targetId: result.targetId };
+    case 'ESCALATE':
+      return { kind: 'TIE_SPEECH', candidates: result.candidates };
+    case 'RANDOM':
+      return { kind: 'EXECUTE_RANDOM', pool: result.pool };
+    case 'NO_TARGET':
+      // 1차: 기권 규칙 — 무처형. 재투표 전원 기권은 동표 후보 중 무작위 (⚠️ 문서 미정 — 가정)
+      return round === 1
+        ? { kind: 'NO_EXECUTION' }
+        : { kind: 'EXECUTE_RANDOM', pool: [...tieCandidates] };
+  }
+}
+
+/* ── 조언자 선출 투표 판정 (7번) — 처형과 동일한 동표 로직(resolveTieBreak) 재사용 ── */
+
+export type ElectionVoteResult =
+  | { kind: 'ELECTED'; advisorId: string }
+  /** 동표·무득표 → pool 중 무작위 선정 (추첨은 호출부에서 rng로) */
+  | { kind: 'ELECT_RANDOM'; pool: string[] }
+  /** 1차 동표 → 동표자만 후보로 재투표 */
+  | { kind: 'REVOTE'; candidates: string[] };
+
+export function resolveElectionVote(
+  votes: Record<string, string | 'ABSTAIN'>,
+  round: 1 | 2,
+  pools: { candidates: readonly string[]; tieCandidates?: readonly string[] },
+): ElectionVoteResult {
+  const result = resolveTieBreak(votes, round);
+  switch (result.kind) {
+    case 'DECIDED':
+      return { kind: 'ELECTED', advisorId: result.targetId };
+    case 'ESCALATE':
+      return { kind: 'REVOTE', candidates: result.candidates };
+    case 'RANDOM':
+      return { kind: 'ELECT_RANDOM', pool: result.pool };
+    case 'NO_TARGET': {
+      // 무득표 → 후보(재투표면 동표 후보) 중 무작위 (⚠️ 문서 미정 — 가정)
+      const pool =
+        round === 2 && pools.tieCandidates?.length ? pools.tieCandidates : pools.candidates;
+      return { kind: 'ELECT_RANDOM', pool: [...pool] };
+    }
+  }
+}
+
+/** 선출 투표권 판정: 출마한 유저에게는 투표권 없음 (7번) */
+export function canVoteInElection(
+  players: readonly GamePlayer[],
+  voterId: string,
+  candidates: readonly string[],
+): boolean {
+  const voter = getPlayer(players, voterId);
+  return !!voter?.alive && !candidates.includes(voterId);
+}
+
 /* ── 낮 개인 발언 순서 (requirements 7번 조언자 규칙) ── */
 
 /**
@@ -146,6 +244,57 @@ export function investigate(target: GamePlayer): InvestigationResult {
   return CHARACTER_BY_ID[target.characterId].investigationResult;
 }
 
+/* ── 스킬 상호작용 판정 (requirements 3·4·5번 섹션)
+ *
+ * 우선순위 정리:
+ * 1) 도깨비 장난 — 그 밤의 악 진영 킬을 무효화. 멸망꽃(아침)은 막지 못하고,
+ *    차단 사실은 악 진영에게 비공개 (아침 공지는 킬 없음과 동일한 "사망자 없음")
+ * 2) 부활꽃 — "그날 밤 악 진영 킬로 사망한 사람"만 대상 (동반사망자·처형자 제외)
+ * 3) 연민 — 까치선비(부활 수혜자) 한정, 사망 원인 불문 (멸망꽃 사망도 부활 가능)
+ * 4) 멸망꽃 사망 — 동귀어진류(피 맺힌 유서) 스킬 기회 자체를 봉인
+ * 5) 부활자의 이미 사용한 1회성 스킬은 소모된 상태로 유지 (skillUses를 절대 초기화하지 않음)
+ */
+
+export interface NightKillResolution {
+  killedPlayerId: string | null;
+  /** 아침 전체 공지 — 장난 차단이든 킬 없음이든 동일하게 NO_DEATH("사망자 없음") */
+  announcement: 'DEATH' | 'NO_DEATH';
+}
+
+/** 1) 밤 킬 판정 — 도깨비 장난이 사용된 밤이면 킬 무효 */
+export function resolveNightKillOutcome(
+  players: readonly GamePlayer[],
+  nightKillTargetId: string | null,
+  prankUsedTonight: boolean,
+): NightKillResolution {
+  if (nightKillTargetId === null) return { killedPlayerId: null, announcement: 'NO_DEATH' };
+  // 장난 차단 — 악 진영에게 따로 알리지 않으며, 공지는 킬 없음과 구분 불가
+  if (prankUsedTonight) return { killedPlayerId: null, announcement: 'NO_DEATH' };
+  const target = getPlayer(players, nightKillTargetId);
+  if (!target?.alive) return { killedPlayerId: null, announcement: 'NO_DEATH' };
+  return { killedPlayerId: target.id, announcement: 'DEATH' };
+}
+
+/** 4) 멸망꽃 사망 → 동귀어진류(피 맺힌 유서) 봉인 판정 — sealedByDeathCauses 기반 */
+export function isTakeAlongSealed(victim: GamePlayer, cause: DeathCause): boolean {
+  const skill = CHARACTER_BY_ID[victim.characterId].skills.find(
+    (s) => s.effectKind === 'TAKE_ALONG_ON_DEATH',
+  );
+  return !!skill?.sealedByDeathCauses?.includes(cause);
+}
+
+/** 3) 연민 적용 판정 — 부활 수혜자(까치선비) 한정, 부활자(바리공주) 생존 + 양쪽 스킬 미소모 */
+export function compassionApplies(players: readonly GamePlayer[], victim: GamePlayer): boolean {
+  const beneficiary = CHARACTER_BY_ID[victim.characterId].skills.find(
+    (s) => s.effectKind === 'REVIVE_BENEFICIARY',
+  );
+  if (!beneficiary || !canUseSkill(victim, beneficiary.id)) return false;
+  const reviver = players.find((p) => p.characterId === beneficiary.reviverCharacterId);
+  const reviverSkill =
+    reviver && CHARACTER_BY_ID[reviver.characterId].skills.find((s) => s.effectKind === 'AUTO_REVIVE');
+  return !!reviver?.alive && !!reviverSkill && canUseSkill(reviver, reviverSkill.id);
+}
+
 /* ── 사망 확정 트리거 처리 (requirements 5-6항) ────── */
 
 export interface DeathProcessState {
@@ -181,28 +330,18 @@ export function computeDeathTriggers(
     triggers.push('COMPANION');
   }
 
-  // 장화홍련류: 동귀어진 — sealedByDeathCauses(멸망꽃)로 죽으면 기회 자체가 없음
+  // 장화홍련류: 동귀어진 — 멸망꽃 사망이면 봉인(isTakeAlongSealed)되어 기회 자체가 없음
   const grudgeSkill = character.skills.find((s) => s.effectKind === 'TAKE_ALONG_ON_DEATH');
-  if (
-    grudgeSkill &&
-    canUseSkill(victim, grudgeSkill.id) &&
-    !grudgeSkill.sealedByDeathCauses?.includes(death.cause)
-  ) {
+  if (grudgeSkill && canUseSkill(victim, grudgeSkill.id) && !isTakeAlongSealed(victim, death.cause)) {
     triggers.push('GRUDGE');
   }
 
   // 조언자: 방울 승계/파기
   if (state.advisorId === victim.id) triggers.push('SUCCESSION');
 
-  // 까치선비류: 부활 수혜자 — 부활시켜 줄 캐릭터(바리공주)가 생존 중이고 양쪽 스킬 미소모
-  const beneficiary = character.skills.find((s) => s.effectKind === 'REVIVE_BENEFICIARY');
-  if (beneficiary && canUseSkill(victim, beneficiary.id)) {
-    const reviver = state.players.find((p) => p.characterId === beneficiary.reviverCharacterId);
-    const reviverSkill =
-      reviver && CHARACTER_BY_ID[reviver.characterId].skills.find((s) => s.effectKind === 'AUTO_REVIVE');
-    if (reviver?.alive && reviverSkill && canUseSkill(reviver, reviverSkill.id)) {
-      triggers.push('KKACHI_REVIVAL');
-    }
+  // 까치선비류: 연민 — 사망 원인 불문, 부활자(바리공주) 생존 + 양쪽 스킬 미소모
+  if (compassionApplies(state.players, victim)) {
+    triggers.push('KKACHI_REVIVAL');
   }
 
   return triggers;
@@ -323,16 +462,15 @@ export function processDawn(input: {
     });
   }
 
-  // 2) 밤 킬 판정
+  // 2) 밤 킬 판정 — 도깨비 장난이 사용된 밤이면 무효 ("사망자 없음", 차단 사실 비공개)
   const pendingDeaths: PendingDeath[] = [];
-  if (input.nightKillTargetId !== null && !input.prankUsedTonight) {
-    const target = getPlayer(players, input.nightKillTargetId);
-    if (target?.alive) {
-      players = players.map((p) => (p.id === target.id ? { ...p, alive: false } : p));
-      pendingDeaths.push({ playerId: target.id, cause: 'EVIL_NIGHT_KILL', applied: true });
-    }
+  const killOutcome = resolveNightKillOutcome(players, input.nightKillTargetId, input.prankUsedTonight);
+  if (killOutcome.killedPlayerId !== null) {
+    players = players.map((p) =>
+      p.id === killOutcome.killedPlayerId ? { ...p, alive: false } : p,
+    );
+    pendingDeaths.push({ playerId: killOutcome.killedPlayerId, cause: 'EVIL_NIGHT_KILL', applied: true });
   }
-  // 장난 사용 밤이면 킬 무효 — 악 진영에게 차단 사실을 알리지 않고 "사망자 없음"으로만 표시(소켓 연동 시)
 
   return { players, pendingDeaths, scheduledRevivals: [] };
 }
