@@ -19,11 +19,13 @@
 - 선출 무득표·악 처치 투표 동률 → 무작위 / 밤 사망자의 트리거는 꽃 단계 이후 처리(부활 시 미발동) / 동시 전멸 시 선 승리
 - 투항(30초 팀 동의)·P버튼은 소켓 연동 세션에서 이벤트로 추가 예정
 
-### ⚠️ 환경 이슈: Node 24.11.1(Windows)에서 `vite build` 크래시
-- 증상: 모듈 transform 직후 exit code `3221226505 (0xC0000409, STATUS_STACK_BUFFER_OVERRUN)`로 조용히 사망
-- 원인 분리 실험: rollup native→WASM 교체, tailwind 제거, minify 비활성, V8 플래그 변경 모두 무효 → **Node 22.23.1로 실행하면 동일 빌드가 정상 완료** (Node 24.11.1 자체 문제로 확정)
-- 현재 상태: dev 서버·vitest·typecheck는 Node 24에서도 정상. **빌드만 Node 22 LTS 필요**
-- 권장: 시스템 Node를 22 LTS로 교체하거나 nvm-windows 등으로 22를 병행 설치
+### ✅ 환경 이슈 해결: Node 24.11.1(Windows) `vite build` 크래시 (세션 2.5에서 조치)
+- 증상: 모듈 transform 직후 exit code `3221226505 (0xC0000409)`로 조용히 사망 — Node 24.11.1 자체 문제로 확정 (Node 22.23.1에서는 정상)
+- 조치: **nvm-windows(1.2.2, winget) 설치 + Node 22.23.1 병행 설치·기본 활성화**. 빌드·테스트(32개)·typecheck 모두 Node 22에서 통과 확인
+- 주의: nvm이 한글 사용자명 경로(`C:\Users\김한경\AppData\Local\nvm`)를 읽지 못해 루트를 **`C:\nvm4w\nvm`(ASCII)** 로 이전하고 NVM_HOME(User)을 갱신함
+  - Machine 스코프 NVM_HOME은 관리자 권한이 없어 구 경로로 남아 있음 (User 값이 우선이라 동작에는 지장 없음 — 거슬리면 관리자 PowerShell에서 갱신)
+  - 구 설치 폴더(AppData\Local\nvm)는 언인스톨러가 있어 그대로 둠
+- Node 24가 필요하면 `nvm use 24.11.1`로 전환 (기존 시스템 Node 24.11.1은 nvm 관리 하에 보존됨)
 
 ### 미결/주의 사항
 - 6인 모드 로스터 구성 미정 (`ROSTER_BY_MODE[6] = null`)

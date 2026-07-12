@@ -37,8 +37,10 @@ korean_tale/
 - `npm run typecheck` / `npm run test` / `npm run build` — 전체 워크스페이스 대상
 
 ⚠️ **Node 버전**: 이 프로젝트의 `vite build`는 Windows의 Node 24.11.1에서 크래시한다
-(0xC0000409, 상세는 docs/PROGRESS.md 세션 1 참고). **빌드는 Node 22 LTS로 실행할 것.**
+(0xC0000409, 상세는 docs/PROGRESS.md 참고). **빌드는 Node 22 LTS로 실행할 것.**
 dev 서버·vitest·typecheck는 Node 24에서도 정상 동작한다.
+- 이 PC에는 nvm-windows가 설치되어 있고 기본 활성 버전이 **22.23.1**이다 (`nvm use 22.23.1` / `nvm use 24.11.1`로 전환).
+- nvm 루트는 `C:\nvm4w\nvm` — 한글 사용자명 경로를 nvm이 처리하지 못해 ASCII 경로로 이전했음. NVM_HOME(User)도 이 경로를 가리킨다.
 
 ## 코드 컨벤션
 
