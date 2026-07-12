@@ -29,7 +29,8 @@ export const FACTION_META: Record<Faction, FactionMeta> = {
   NEUTRAL: {
     id: 'NEUTRAL',
     label: '중립',
-    // 중립 진영 자체의 승리 조건은 문서에 미정 — 확정 시 추가
+    // 선 진영 승리 조건과 동일 — 승패 전이에는 영향 없고 결과 표시에서 함께 승리 처리
+    winCondition: '악 진영 전원 탈락 시점에 중립 진영 1명 이상 생존 시 선 진영과 함께 승리',
   },
 };
 
@@ -248,6 +249,7 @@ export const CHARACTERS: readonly GameCharacter[] = [
         canForgo: false,
         effectKind: 'REVIVE_BENEFICIARY',
         convertsToFactionOnRevive: 'NEUTRAL',
+        reviverCharacterId: 'baridegi',
         description:
           '어떤 스킬의 영향이나 투표로 죽음을 맞이하면 다음날 아침 부활하며, 진영이 중립으로 전환된다.',
         notes: [

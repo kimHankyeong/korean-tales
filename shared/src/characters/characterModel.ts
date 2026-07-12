@@ -111,6 +111,8 @@ export interface Skill {
   sealedByDeathCauses?: readonly DeathCause[];
   /** 부활 시 전환되는 진영 (까치의 보은 → NEUTRAL) */
   convertsToFactionOnRevive?: Faction;
+  /** REVIVE_BENEFICIARY 전용: 부활을 수행해 주는 캐릭터 (까치의 보은 → 바리공주) */
+  reviverCharacterId?: CharacterId;
 
   /** 예외 규칙·세부 판정 메모 */
   notes?: readonly string[];
