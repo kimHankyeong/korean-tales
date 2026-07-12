@@ -36,6 +36,10 @@ korean_tale/
 - `npm run dev:client` / `npm run dev:server` — 개발 서버
 - `npm run typecheck` / `npm run test` / `npm run build` — 전체 워크스페이스 대상
 
+⚠️ **Node 버전**: 이 프로젝트의 `vite build`는 Windows의 Node 24.11.1에서 크래시한다
+(0xC0000409, 상세는 docs/PROGRESS.md 세션 1 참고). **빌드는 Node 22 LTS로 실행할 것.**
+dev 서버·vitest·typecheck는 Node 24에서도 정상 동작한다.
+
 ## 코드 컨벤션
 
 - **TypeScript strict 모드** (`tsconfig.base.json`에서 강제, `noUncheckedIndexedAccess` 포함). 새 워크스페이스는 반드시 base를 extends 할 것.

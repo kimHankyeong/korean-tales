@@ -1,4 +1,4 @@
-import { CHARACTERS, FACTIONS } from '@korean-tales/shared';
+import { CHARACTERS, FACTION_META } from '@korean-tales/shared';
 
 /**
  * 스캐폴드 확인용 화면 — 게임 UI는 이후 세션에서 docs/requirements.md 6번 섹션 기반으로 구현.
@@ -12,7 +12,7 @@ export default function App() {
       <ul className="flex flex-wrap justify-center gap-2 px-8">
         {CHARACTERS.map((c) => (
           <li key={c.id} className="rounded-full border border-slate-700 px-3 py-1 text-sm">
-            {c.name} · {FACTIONS[c.faction].label}
+            {c.name} · {FACTION_META[c.faction].label}
           </li>
         ))}
       </ul>

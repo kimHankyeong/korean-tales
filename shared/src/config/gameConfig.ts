@@ -17,9 +17,9 @@ export const ROOM_OPTIONS = {
 
 /** 서버 사이드 타이머(초) — 2번 섹션 표 */
 export const TIMER_CONFIG = {
-  /** 밤: 악 진영 스킬 사용 결정 (2번 섹션 표 기준 15초) */
-  nightEvilSkillDecision: 15,
-  /** 밤: 악 진영 개별 스킬 시간 (4번 섹션 5항 기준 10초 — 표의 15초와 상이, FSM 구현 시 확인) */
+  /** 밤: 악 진영 스킬 사용 결정 (2번 섹션 표 — 10초로 확정됨) */
+  nightEvilSkillDecision: 10,
+  /** 밤: 악 진영 개별 스킬 시간 (4번 섹션 5항) */
   nightEvilIndividualSkill: 10,
   /** 밤: 악 진영 토론 */
   nightEvilDiscussion: 90,
