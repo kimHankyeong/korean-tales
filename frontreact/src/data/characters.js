@@ -1,13 +1,23 @@
+import gumihoImg from '../assets/illustrations/gumiho.png';
+import jeoseungImg from '../assets/illustrations/jeoseung.png';
+import susalgwiImg from '../assets/illustrations/susalgwi.png';
+import haetaeImg from '../assets/illustrations/haetae.jpg';
+import jacheongbiImg from '../assets/illustrations/jacheongbi.png';
+import baridegiImg from '../assets/illustrations/baridegi.png';
+import kkachiImg from '../assets/illustrations/kkachi.png';
+import dokkaebiImg from '../assets/illustrations/dokkaebi.jpg';
+import janghwaImg from '../assets/illustrations/janghwa.png';
+
 export const CHARACTERS = [
-  { id: 'gumiho', name: '구미호', faction: 'evil', shape: 'fox', ability: '밤마다 한 사람을 홀려 제거한다.' },
-  { id: 'jeoseung', name: '저승사자', faction: 'evil', shape: 'scroll', ability: '한 사람을 지목해 다음 날 운명을 정한다.' },
-  { id: 'susalgwi', name: '수살귀', faction: 'evil', shape: 'droplet', ability: '한 사람을 물속에 가두어 능력을 봉인한다.' },
-  { id: 'haetae', name: '해태', faction: 'good', shape: 'lens', ability: '밤마다 한 사람을 지켜 위협을 막아낸다.' },
-  { id: 'jacheongbi', name: '자청비', faction: 'good', shape: 'sword-flower', ability: '한 사람의 정체를 몰래 확인한다.' },
-  { id: 'baridegi', name: '바리데기', faction: 'good', shape: 'flower', ability: '죽은 자를 단 한 번 되살릴 수 있다.' },
-  { id: 'kkachi', name: '까치선비', faction: 'good', shape: 'bird', ability: '낮 토론에서 두 표를 행사할 수 있다.' },
-  { id: 'dokkaebi', name: '도깨비', faction: 'good', shape: 'club', ability: '한 사람의 투표를 무효로 만든다.' },
-  { id: 'janghwa', name: '장화홍련', faction: 'good', shape: 'rope', ability: '자신이 제거되면 그 상대를 모두에게 알린다.' },
+  { id: 'gumiho', name: '구미호', faction: 'evil', shape: 'fox', ability: '밤마다 한 사람을 홀려 제거한다.', image: gumihoImg },
+  { id: 'jeoseung', name: '저승사자', faction: 'evil', shape: 'scroll', ability: '한 사람을 지목해 다음 날 운명을 정한다.', image: jeoseungImg },
+  { id: 'susalgwi', name: '수살귀', faction: 'evil', shape: 'droplet', ability: '한 사람을 물속에 가두어 능력을 봉인한다.', image: susalgwiImg },
+  { id: 'haetae', name: '해태', faction: 'good', shape: 'lens', ability: '밤마다 한 사람을 지켜 위협을 막아낸다.', image: haetaeImg },
+  { id: 'jacheongbi', name: '자청비', faction: 'good', shape: 'sword-flower', ability: '한 사람의 정체를 몰래 확인한다.', image: jacheongbiImg },
+  { id: 'baridegi', name: '바리데기', faction: 'good', shape: 'flower', ability: '죽은 자를 단 한 번 되살릴 수 있다.', image: baridegiImg },
+  { id: 'kkachi', name: '까치선비', faction: 'good', shape: 'bird', ability: '낮 토론에서 두 표를 행사할 수 있다.', image: kkachiImg },
+  { id: 'dokkaebi', name: '도깨비', faction: 'good', shape: 'club', ability: '한 사람의 투표를 무효로 만든다.', image: dokkaebiImg },
+  { id: 'janghwa', name: '장화홍련', faction: 'good', shape: 'rope', ability: '자신이 제거되면 그 상대를 모두에게 알린다.', image: janghwaImg },
 ];
 
 export const FACTION_META = {
