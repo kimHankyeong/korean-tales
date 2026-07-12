@@ -1,6 +1,24 @@
 # 진행 기록 (PROGRESS)
 
-## 세션 2 완료: 게임 상태 머신(FSM) 구현 (2026-07-12)
+## 세션 3 완료: 서버 권위 타이머 시스템 (2026-07-13)
+
+- `server/src/game/timer.ts` — `PhaseTimer`: 페이즈당 하나의 서버 타이머 (시작/취소/남은 시간)
+- `server/src/game/session.ts` — `GameSession`: 상태 머신과 타이머 결합
+  - 상태 전이 구독 → 시간 제한 있는 상태 진입 시 타이머 시작 → 만료 시 `TIME_UP` 자동 발행
+  - `getTimerSpec()`이 상태→제한시간 매핑의 단일 원본 (`TIMER_CONFIG` + 방 옵션, 하드코딩 없음)
+  - **페이즈 키가 바뀔 때만 재시작** — 투표 등록·skip 집계는 타이머 유지, 개인 발언은 발언자 교체마다 새 타이머
+  - 클라이언트 동기화 인터페이스: `SOCKET_EVENTS.timerSync` + `TimerSyncPayload`(shared/src/socket/events.ts) — `onTimerSync` 콜백으로 브로드캐스트 연결 지점만 마련 (UI·룸 연동은 이후 세션)
+- FSM 확장 (requirements 1번 Skip 규칙·7번 발언 순서):
+  - **낮 개인 발언 단계**(`day.personalSpeech`) 신설 — 방 옵션(80/120초)씩 순서대로, 조언자 마지막·역/정순 방향(`computeSpeechOrder`)
+  - `SKIP` 이벤트에 playerId 부여: 개인 발언/어필/최후의 변론은 **본인만** 즉시 종료, 전체 토론(선출·낮·악 토론)은 **해당 생존자 전원** skip 시 조기 종료
+  - **7인 모드 반영** (requirements 1번 확정): 조언자 뽑기 제외 → `setup` 분기로 바로 첫날 낮, 로스터 `ROSTER_BY_MODE[7]`(깡철이·까치선비 제외), `ADVISOR_ELECTION_BY_MODE`
+- shared 보강: `RoomTimerSettings`·`DEFAULT_ROOM_TIMER_SETTINGS`(방 옵션 80/120초·3/5분), `ROOM_OPTIONS.playerModes` 7인으로 갱신, 소켓 이벤트 계약(`shared/src/socket/events.ts`)
+- 테스트 **53개** 통과 (shared 15 + 서버: logic 21·machine 21·timer 4·session 7 — fake timer로 자동 진행/skip/방 옵션 검증)
+- 발견·수정한 버그: `personalSpeech`의 always 안전장치가 매 이벤트 후 재평가되어 마지막 발언자 차례를 건너뛰던 문제 (빈 큐일 때만 동작하도록 수정)
+
+## 이전 세션 상세
+
+### 세션 2 완료: 게임 상태 머신(FSM) 구현 (2026-07-12)
 
 - `server/src/game/`에 XState v5 기반 전체 상태 머신 구현 (타이머·소켓 미연결 — 시간 만료는 외부 `TIME_UP` 이벤트로 주입)
   - `types.ts` — 런타임 타입 (GamePlayer·GameContext·GameEvent·PendingDeath 등)
@@ -28,7 +46,7 @@
 - Node 24가 필요하면 `nvm use 24.11.1`로 전환 (기존 시스템 Node 24.11.1은 nvm 관리 하에 보존됨)
 
 ### 미결/주의 사항
-- 6인 모드 로스터 구성 미정 (`ROSTER_BY_MODE[6] = null`)
+- ~~6인 모드 로스터~~ → **7인 모드로 확정** (세션 3에서 반영: 깡철이·까치선비 제외, 조언자 선출 없음)
 - 레거시 폴더(`frontreact/`, 루트 `src/`·`public/`, `back/`) 정리 여부 미정
 
 ## 이전 세션
@@ -41,10 +59,10 @@
 - npm workspaces 모노레포(client/server/shared), 기술 스택 세팅, CLAUDE.md, docs/requirements.md 배치
 - 게임 규칙 상수 `gameConfig.ts` 분리, 서버는 Socket.io 연결 스켈레톤만 존재
 
-## 다음 세션 할 일 (세션 3)
+## 다음 세션 할 일 (세션 4)
 
-- **타이머 시스템** (requirements 10번 4단계): 서버 권위 타이머 구현
-  - `TIMER_CONFIG` 기반으로 각 상태 진입 시 타이머 시작 → 만료 시 머신에 `TIME_UP` 발행
-  - 클라이언트 카운트다운 동기화용 남은 시간 브로드캐스트 설계
-  - Skip 조기 종료(개인 발언·전체 토론: 생존자 전원 skip 집계) 연결
-- 이후: 5단계 투표/스킬 선택 공용 UI → 6단계 투표 결과 판정 연결 → 7단계 승리 조건(투항 30초 팀 동의 포함)
+- **방(룸)·Socket.io 연동**: 방 생성/입장 → `GameSession` 인스턴스 관리 → 소켓 이벤트를 머신 이벤트로 변환
+  - `SOCKET_EVENTS.timerSync` 브로드캐스트를 실제 io.emit에 연결
+  - 진영·역할별 정보 은닉(해태 투사 결과는 본인에게만, 악 채팅 격리 등) 설계
+- 또는 requirements 10번 5단계: **투표/스킬 선택 공용 UI** (client) — 레이아웃 동일, 버튼 텍스트만 분기, 기권·스킬 포기 옵션
+- 이후: 6단계 투표 결과 판정 연결 → 7단계 승리 조건(투항 30초 팀 동의·P버튼 포함)

@@ -1,46 +1,55 @@
 # 게임 상태 머신 (FSM) — 상태 전이 다이어그램
 
 > 구현: `server/src/game/machine.ts` (XState v5) + `server/src/game/logic.ts` (순수 전이 로직)
-> 근거: `docs/requirements.md` 4번(밤)·5번(낮)·7번(조언자 출마)·8번(승리 조건)
+> 타이머: `server/src/game/timer.ts` (PhaseTimer) + `server/src/game/session.ts` (GameSession — 머신·타이머 결합)
+> 근거: `docs/requirements.md` 1번(방 옵션·Skip)·2번(타이머)·4번(밤)·5번(낮)·7번(조언자 출마)·8번(승리 조건)
 >
-> 타이머·소켓은 아직 연결되지 않았다. 시간 만료는 외부에서 `TIME_UP` 이벤트로 주입되며,
-> 각 상태의 제한시간 값은 `shared/src/config/gameConfig.ts`(TIMER_CONFIG)를 따른다.
+> **서버 권위 타이머**: GameSession이 상태 전이를 구독하다가 시간 제한이 있는 상태에 들어오면
+> `TIMER_CONFIG`(또는 방 옵션 `RoomTimerSettings`) 기준으로 타이머를 시작하고, 만료 시 머신에
+> `TIME_UP`을 자동 발행한다. 클라이언트에는 `SOCKET_EVENTS.timerSync`(`TimerSyncPayload`)로
+> 남은 시간을 동기화한다 (UI·룸 연동은 이후 세션).
 
 ## 전체 흐름
 
 ```mermaid
 stateDiagram-v2
-    [*] --> firstMorning
+    [*] --> setup
+    setup: 시작 분기 (통과 상태)
+    setup --> firstMorning: 9인 모드
+    setup --> day: 7인 모드 [조언자 뽑기 제외\n발언 순서 정순 고정]
 
     state "첫날 아침 — 조언자 선출 (7번)" as firstMorning {
         [*] --> candidacy
         candidacy: 출마 신청 (7초)
-        appeal: 출마자 개인 어필 (각 20초)
-        electionDiscussion: 선출 전체 토론 (50초)
+        appeal: 출마자 개인 어필 (각 20초)\nSkip = 발언자 본인만
+        electionDiscussion: 선출 전체 토론 (50초)\n생존자 전원 Skip 시 조기 종료
         electionVote: 선출 투표 (7초)\n출마자는 투표권 없음
         electionRevote: 선출 재투표\n(동표자만 후보)
 
         candidacy --> appeal: TIME_UP [출마자 있음]
-        appeal --> appeal: TIME_UP/SKIP [다음 발언자 남음]
-        appeal --> electionDiscussion: TIME_UP/SKIP [마지막 발언자]
-        electionDiscussion --> electionVote: TIME_UP/SKIP
+        appeal --> appeal: TIME_UP/본인 SKIP [다음 발언자 남음]
+        appeal --> electionDiscussion: TIME_UP/본인 SKIP [마지막 발언자]
+        electionDiscussion --> electionVote: TIME_UP / 전원 SKIP
         electionVote --> electionRevote: TIME_UP [최다 득표 동표]
     }
 
-    state "낮 (5번)" as day {
+    state "낮 (5번·7번)" as day {
         dawn: 새벽 (통과 상태)\n일차+1, 연민 부활, 밤 킬 판정\n(장난 사용 밤이면 킬 무효 — 사망자 없음)
-        flowerDecision: 자청비 꽃 선택 (10초)\n부활꽃/멸망꽃 — 같은 아침 동시 사용 불가
-        discussion: 낮 전체 토론 (방 옵션)\n조언자가 발언 방향(역/정순) 결정
+        flowerDecision: 자청비 꽃 선택 (10초)\n부활꽃/멸망꽃 — 같은 아침 동시 사용 불가\n조언자 발언 방향(역/정순) 결정 가능
+        personalSpeech: 개인 발언 (방 옵션 80/120초 × 인원)\n조언자는 마지막, Skip = 발언자 본인만
+        discussion: 전체 토론 (방 옵션 3분/5분)\n생존자 전원 Skip 시 조기 종료
         vote: 처형 투표 (10초, 기권 포함)
         tieSpeech: 최다득표자 동시 발언 (20초)
         revote: 재투표 (동표자만 후보)
-        finalPlea: 최후의 변론 (20초, Skip 가능)
+        finalPlea: 최후의 변론 (20초)\nSkip = 처형 대상자 본인만 → 즉시 사망 처리
 
         dawn --> flowerDecision: always [자청비 생존 + 사용 가능한 꽃 있음]
-        flowerDecision --> discussion
-        discussion --> vote: TIME_UP/SKIP [유혹 미사용]
+        flowerDecision --> personalSpeech
+        personalSpeech --> personalSpeech: TIME_UP/본인 SKIP [다음 발언자 남음]
+        personalSpeech --> discussion: TIME_UP/본인 SKIP [마지막 발언자]
+        discussion --> vote: TIME_UP / 전원 SKIP [유혹 미사용]
         vote --> tieSpeech: TIME_UP [최다 득표 동표]
-        tieSpeech --> revote: TIME_UP/SKIP
+        tieSpeech --> revote: TIME_UP
         vote --> finalPlea: TIME_UP [최다 득표 단독]
         revote --> finalPlea: TIME_UP [단독 확정 또는\n재동표 → 무작위 1인]
     }
@@ -48,12 +57,12 @@ stateDiagram-v2
     state "밤 (4번)" as night {
         [*] --> goodSkills
         goodSkills: 해태 투사 / 도깨비 장난 (10초, 동시)
-        evilDiscussion: 악 진영 토론 (90초)
+        evilDiscussion: 악 진영 토론 (90초)\n악 생존자 전원 Skip 시 조기 종료
         evilVote: 악 처치 투표 (10초)\n무투표 → 킬 없음
         evilSkills: 악 개별 스킬 (10초)\n저승사자 길동무 / 구미호 유혹
 
         goodSkills --> evilDiscussion: TIME_UP
-        evilDiscussion --> evilVote: TIME_UP/SKIP
+        evilDiscussion --> evilVote: TIME_UP / 악 전원 SKIP
         evilVote --> evilSkills: TIME_UP (대상 확정)
         evilSkills --> [*]: TIME_UP
     }
@@ -72,13 +81,35 @@ stateDiagram-v2
 
     firstMorning --> day: 조언자 확정\n(출마자 없으면 조언자 없이 — 정순 고정)
     day --> night: 전원 기권 [희생자 없음]\n또는 유혹 발동 [투표 스킵]
-    day --> resolveDeaths: 꽃 선택 종료 [밤 사망자 트리거]\n변론 종료 [처형 집행]
+    day --> resolveDeaths: 꽃 선택 종료 [밤 사망자 트리거]\n변론 종료/본인 Skip [처형 집행]
     night --> day: 새벽 (dawn)
-    resolveDeaths --> day: 큐 소진 [복귀 지점 = 낮 토론]
+    resolveDeaths --> day: 큐 소진 [복귀 = 낮 개인 발언]
     resolveDeaths --> night: 큐 소진 [복귀 지점 = 밤]
     resolveDeaths --> gameOver: 큐 소진 [탈락 승리 성립 — 일차 무관]
     gameOver --> [*]
 ```
+
+## 서버 권위 타이머 (2번 섹션 표 ↔ 상태 매핑)
+
+`session.ts`의 `getTimerSpec()`이 상태 → `{ 페이즈 키, 제한시간 }` 매핑의 단일 원본이다.
+페이즈 키가 바뀔 때만 타이머를 재시작하므로, 같은 페이즈 안의 이벤트(투표 등록·skip 집계)는
+타이머에 영향을 주지 않고, 개인 발언은 발언자가 바뀔 때마다 새 타이머가 시작된다.
+
+| 상태 | 제한시간 | 출처 |
+|---|---|---|
+| 출마 신청 / 선출 투표·재투표 | 7초 / 7초 | `TIMER_CONFIG.advisorCandidacy`·`advisorVote` |
+| 출마자 어필 (발언자별) | 각 20초 | `advisorAppeal` |
+| 선출 토론 | 50초 | `advisorDiscussion` |
+| 꽃 선택 | 10초 | `morningFlowerDecision` |
+| 개인 발언 (발언자별) | 80/120초 | 방 옵션 `RoomTimerSettings.personalSpeechSeconds` |
+| 전체 토론 | 3분/5분 | 방 옵션 `RoomTimerSettings.discussionSeconds` |
+| 처형 투표·재투표 / 악 처치 투표 | 10초 | `vote` |
+| 동표 동시 발언 | 20초 | `tieSpeech` |
+| 최후의 변론 | 20초 | `finalPlea` |
+| 밤 선 진영 스킬 / 악 개별 스킬 | 10초 / 10초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |
+| 악 토론 | 90초 | `nightEvilDiscussion` |
+| 피 맺힌 유서 / 방울 승계 | 10초 / 10초 | `deathJanghwaDecision`·`deathAdvisorDecision` |
+| dawn·advance(통과)·gameOver | 없음 | — |
 
 ## 사망 확정 트리거 처리 순서 (사망자 1인 기준)
 
@@ -94,13 +125,16 @@ stateDiagram-v2
 
 | 항목 | 현재 구현 | 근거 |
 |---|---|---|
-| 첫날(1일차)의 진행 | 조언자 선출 직후 **낮 토론부터** 시작 (꽃 단계 없음 — 이전 밤이 없으므로) | 문서에 명시 없음 — 가정 |
+| 첫날(1일차)의 진행 | 조언자 선출(9인) 직후 **낮 개인 발언부터** 시작 (꽃 단계 없음 — 이전 밤이 없으므로) | 문서에 명시 없음 — 가정 |
+| 7인 모드 | 조언자 선출 없이 바로 첫날 낮, 발언 순서 정순 고정. 로스터는 깡철이·까치선비 제외 | 1번 섹션 확정 |
 | 출마자 없음 | 조언자 없이 진행, 발언 순서 정순 고정 | 문서에 명시 없음 — 가정 |
 | 선출 투표 무득표 | 출마자 중 무작위 선정 | 문서에 명시 없음 — 가정 |
 | 악 처치 투표 동률 | 최다득표자 중 무작위 | 문서 미정 — 가정 |
 | 밤 사망자의 트리거 시점 | 자청비 꽃 단계 **이후** 처리 (부활꽃으로 살아나면 트리거 미발동) | 문서에 명시 없음 — 가정 |
+| 조언자 발언 방향 결정 시점 | 꽃 선택 단계에서 ADVISOR_DIRECTION 이벤트로 (1일차는 정순 기본값) | 문서에 명시 없음 — 가정 |
+| 동표 동시 발언(tieSpeech)의 Skip | 없음 (동시 발언이므로 TIME_UP만) | 문서에 명시 없음 — 가정 |
 | 길동무 지정 지속 | 재지정 전까지 유지, 저승사자 사망 시 소모 | 문서에 명시 없음 — 가정 |
 | 동시 전멸 | 선 진영 승리 | 문서 미정 — 가정 |
 | 투항(30초 팀 동의)·P버튼 | 미구현 — 소켓 연동 세션에서 이벤트로 추가 예정 | 6번 섹션 |
-| 도깨비 장난 밤의 악 투표 | 투표는 그대로 진행, 차단 사실 비공개 (아침 "사망자 없음") | PROGRESS 확정 사항 반영 |
-| 중립 승리 | 악 전멸(=선 승리) 시점에 중립 1인 이상 생존 시 함께 승리 — 전이에는 영향 없음, 결과 표시에서 처리 | PROGRESS 확정 사항 반영 |
+| 도깨비 장난 밤의 악 투표 | 투표는 그대로 진행, 차단 사실 비공개 (아침 "사망자 없음") | 확정 반영 |
+| 중립 승리 | 악 전멸(=선 승리) 시점에 중립 1인 이상 생존 시 함께 승리 — 전이에는 영향 없음 | 확정 반영 |

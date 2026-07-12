@@ -1,23 +1,30 @@
 /**
  * korean_tales 게임 전체 상태 머신 (XState v5)
- * — docs/requirements.md 4번(밤)·5번(낮)·7번(조언자 출마)·8번(승리 조건) 기반
+ * — docs/requirements.md 1번(방 옵션·Skip)·4번(밤)·5번(낮)·7번(조언자 출마)·8번(승리 조건) 기반
  * — 상태 전이 다이어그램: docs/fsm.md
  *
  * 설계 원칙:
- * - 타이머·소켓은 아직 연결하지 않는다. 시간 만료는 외부에서 TIME_UP 이벤트로 주입되고,
- *   각 상태의 제한시간 값은 shared의 TIMER_CONFIG를 따른다(추후 타이머 시스템이 참조).
+ * - 서버 권위 타이머는 session.ts(GameSession)가 담당한다. 머신은 시간 만료를
+ *   TIME_UP 이벤트로만 받고, 각 상태의 제한시간 값은 shared의 TIMER_CONFIG·RoomTimerSettings를 따른다.
  * - 모든 guard/action은 logic.ts의 순수 함수를 조합해서만 동작한다.
  * - 무작위 판정(동표 무작위 처형 등)은 context.rng로 주입받는다.
  *
+ * Skip 규칙 (1번 섹션):
+ * - 개인 발언(어필·낮 개인 발언)·최후의 변론: 발언 당사자 본인의 SKIP만 유효 → 즉시 다음
+ * - 전체 토론(선출 토론·낮 토론·악 토론): 해당 생존자 전원이 SKIP하면 조기 종료
+ *
  * 상태 흐름 개요:
- *   firstMorning(조언자 선출) → day ⇄ night 반복 → gameOver
+ *   setup → firstMorning(조언자 선출, 9인 모드만) → day ⇄ night 반복 → gameOver
  *   사망 발생 시 공통적으로 resolveDeaths 서브 상태를 경유한다.
  */
 
-import { assign, setup } from 'xstate';
+import { and, assign, setup } from 'xstate';
+import { ADVISOR_ELECTION_BY_MODE, DEFAULT_ROOM_TIMER_SETTINGS } from '@korean-tales/shared';
 import {
+  alivePlayers,
   canUseSkill,
   checkWin,
+  computeSpeechOrder,
   getPlayer,
   investigate,
   isRevivableTonight,
@@ -43,6 +50,12 @@ function deathState(context: GameContext) {
   };
 }
 
+/** 전체 토론 skip 완주 판정: skipper 본인 포함 대상 전원이 skip을 눌렀는가 */
+function skipCompletes(targets: readonly { id: string }[], skipVotes: readonly string[], skipperId: string): boolean {
+  if (!targets.some((p) => p.id === skipperId)) return false; // 대상이 아닌 사람의 skip은 무효
+  return targets.every((p) => p.id === skipperId || skipVotes.includes(p.id));
+}
+
 export const gameMachine = setup({
   types: {
     context: {} as GameContext,
@@ -51,11 +64,18 @@ export const gameMachine = setup({
   },
 
   guards: {
+    /* ── 모드 ── */
+    // 전이 조건: 7인 모드 — 조언자 선출 없이 게임 시작 (발언 순서 정순 고정)
+    electionDisabled: ({ context }) => !ADVISOR_ELECTION_BY_MODE[context.mode],
+
     /* ── 조언자 선출 ── */
-    // 전이 조건: 출마 신청자가 아무도 없음 → 조언자 없이 낮 진행 (발언 순서 정순 고정)
+    // 전이 조건: 출마 신청자가 아무도 없음 → 조언자 없이 낮 진행
     noCandidates: ({ context }) => context.candidates.length === 0,
     // 전이 조건: 어필 발언이 마지막 사람까지 끝남
     lastAppeal: ({ context }) => context.appealQueue.length <= 1,
+    // 어필 Skip: 현재 발언자 본인만 유효
+    currentAppealSpeakerSkip: ({ context, event }) =>
+      event.type === 'SKIP' && context.appealQueue[0] === event.playerId,
     // 유효 출마: 생존자이며 아직 신청 안 함
     validCandidacy: ({ context, event }) => {
       if (event.type !== 'CANDIDACY_APPLY') return false;
@@ -88,6 +108,17 @@ export const gameMachine = setup({
     voteDecided: ({ context }) => resolveVoteOutcome(context.votes).kind === 'DECIDED',
     // 전이 조건: 득표자 없음 (처형 투표: 전원 기권 → 희생자 없이 밤으로)
     voteNoTarget: ({ context }) => resolveVoteOutcome(context.votes).kind === 'NO_TARGET',
+    // 전체 토론 skip 완주: 생존자 전원 (선출 토론·낮 토론 공용)
+    allAliveSkipComplete: ({ context, event }) =>
+      event.type === 'SKIP' && skipCompletes(alivePlayers(context.players), context.skipVotes, event.playerId),
+    // 악 토론 skip 완주: 악 진영 생존자 전원
+    allEvilSkipComplete: ({ context, event }) =>
+      event.type === 'SKIP' &&
+      skipCompletes(
+        alivePlayers(context.players).filter((p) => p.faction === 'EVIL'),
+        context.skipVotes,
+        event.playerId,
+      ),
 
     /* ── 낮 ── */
     // 전이 조건: 자청비가 생존해 있고 사용할 수 있는 꽃이 하나라도 있음
@@ -117,6 +148,13 @@ export const gameMachine = setup({
       const target = getPlayer(context.players, event.targetId);
       return !!jacheongbi?.alive && canUseSkill(jacheongbi, 'doom-flower') && !!target?.alive;
     },
+    // 개인 발언 Skip: 현재 발언자 본인만 유효
+    currentSpeakerSkip: ({ context, event }) =>
+      event.type === 'SKIP' && context.speechQueue[0] === event.playerId,
+    // 전이 조건: 마지막 발언자까지 끝남
+    lastSpeech: ({ context }) => context.speechQueue.length <= 1,
+    // 안전장치: 발언 큐가 완전히 비었음 (정상 플로우에서는 발생하지 않음)
+    noSpeakers: ({ context }) => context.speechQueue.length === 0,
     // 전이 조건: 구미호가 전날 밤 유혹 사용 → 토론 후 투표 단계 전체 스킵
     seduceActive: ({ context }) => context.seduceNextDay,
     // 유효 처형 투표: 생존자가 생존자(또는 기권)에게
@@ -135,6 +173,9 @@ export const gameMachine = setup({
       if (event.targetId === 'ABSTAIN') return true;
       return context.tieCandidates.includes(event.targetId);
     },
+    // 최후의 변론 Skip: 처형 대상자 본인만 유효
+    condemnedSkip: ({ context, event }) =>
+      event.type === 'SKIP' && context.executionTargetId === event.playerId,
 
     /* ── 밤 ── */
     validInvestigate: ({ context, event }) => {
@@ -226,11 +267,30 @@ export const gameMachine = setup({
     // 조언자 없음 확정 → 발언 순서 정순 고정
     noAdvisor: assign({ advisorId: null, advisorBroken: true }),
 
+    /* ── Skip 집계 (전체 토론 공용) ── */
+    clearSkips: assign({ skipVotes: [] }),
+    addSkipVote: assign(({ context, event }) => {
+      if (event.type !== 'SKIP') return {};
+      const p = getPlayer(context.players, event.playerId);
+      if (!p?.alive || context.skipVotes.includes(event.playerId)) return {};
+      return { skipVotes: [...context.skipVotes, event.playerId] };
+    }),
+
     /* ── 낮 ── */
     setSpeechDirection: assign(({ event }) => {
       if (event.type !== 'ADVISOR_DIRECTION') return {};
       return { speechDirection: event.direction };
     }),
+    // 매 아침 개인 발언 순서 재계산 — 조언자 마지막, 방향은 조언자 결정 (7번 섹션)
+    initSpeechQueue: assign(({ context }) => ({
+      speechQueue: computeSpeechOrder(
+        context.players,
+        context.advisorBroken ? null : context.advisorId,
+        context.speechDirection,
+      ),
+      skipVotes: [],
+    })),
+    shiftSpeech: assign(({ context }) => ({ speechQueue: context.speechQueue.slice(1) })),
     // 부활꽃: 대상 부활 + 해당 사망 건 폐기(트리거 미발동), 스킬 소모
     applyRevive: assign(({ context, event }) => {
       if (event.type !== 'FLOWER_REVIVE') return {};
@@ -286,7 +346,7 @@ export const gameMachine = setup({
     }),
 
     /* ── 밤 ── */
-    clearNightState: assign({ evilVotes: {}, lastInvestigation: null }),
+    clearNightState: assign({ evilVotes: {}, lastInvestigation: null, skipVotes: [] }),
     recordInvestigation: assign(({ context, event }) => {
       if (event.type !== 'HAETAE_INVESTIGATE') return {};
       const target = getPlayer(context.players, event.targetId)!;
@@ -397,6 +457,10 @@ export const gameMachine = setup({
   context: ({ input }) => ({
     players: input.players,
     day: 1,
+    mode: input.mode ?? (input.players.length === 7 ? 7 : 9),
+    roomSettings: input.settings ?? DEFAULT_ROOM_TIMER_SETTINGS,
+    speechQueue: [],
+    skipVotes: [],
     advisorId: null,
     advisorBroken: false,
     speechDirection: 'FORWARD',
@@ -418,9 +482,19 @@ export const gameMachine = setup({
     winner: null,
     rng: input.rng ?? Math.random,
   }),
-  initial: 'firstMorning',
+  initial: 'setup',
 
   states: {
+    /* ═══ 시작 분기 ═══ */
+    setup: {
+      always: [
+        // 전이 조건: 7인 모드 — 조언자 뽑기 제외, 바로 첫날 낮 개인 발언 (정순 고정)
+        { guard: 'electionDisabled', actions: 'noAdvisor', target: '#daySpeech' },
+        // 전이 조건: 9인 모드 — 첫날 아침 조언자 선출부터
+        { target: 'firstMorning' },
+      ],
+    },
+
     /* ═══ 첫날 아침 — 조언자 선출 (requirements 7번) ═══ */
     firstMorning: {
       initial: 'candidacy',
@@ -430,33 +504,41 @@ export const gameMachine = setup({
           on: {
             CANDIDACY_APPLY: { guard: 'validCandidacy', actions: 'addCandidate' },
             TIME_UP: [
-              // 전이 조건: 출마자 없음 → 조언자 없이 첫날 낮 토론으로 (발언 순서 정순 고정 — 문서 미정 가정)
-              { guard: 'noCandidates', actions: 'noAdvisor', target: '#dayDiscussion' },
+              // 전이 조건: 출마자 없음 → 조언자 없이 첫날 낮으로 (발언 순서 정순 고정 — 문서 미정 가정)
+              { guard: 'noCandidates', actions: 'noAdvisor', target: '#daySpeech' },
               // 전이 조건: 출마자 있음 → 개인 어필 발언으로
               { actions: 'initAppealQueue', target: 'appeal' },
             ],
           },
         },
-        // 출마자 개인 어필 발언 (각 20초, Skip 가능)
+        // 출마자 개인 어필 발언 (각 20초) — Skip은 현재 발언자 본인만
         appeal: {
           on: {
             TIME_UP: [
               // 전이 조건: 마지막 발언자까지 끝남 → 전체 토론
               { guard: 'lastAppeal', actions: 'shiftAppeal', target: 'electionDiscussion' },
-              // 전이 조건: 다음 발언자 남음 → 같은 상태 재진입
-              { actions: 'shiftAppeal', target: 'appeal', reenter: true },
+              // 전이 조건: 다음 발언자 남음 (내부 전이 — 발언자 교체)
+              { actions: 'shiftAppeal' },
             ],
             SKIP: [
-              { guard: 'lastAppeal', actions: 'shiftAppeal', target: 'electionDiscussion' },
-              { actions: 'shiftAppeal', target: 'appeal', reenter: true },
+              {
+                guard: and(['currentAppealSpeakerSkip', 'lastAppeal']),
+                actions: 'shiftAppeal',
+                target: 'electionDiscussion',
+              },
+              { guard: 'currentAppealSpeakerSkip', actions: 'shiftAppeal' },
             ],
           },
         },
-        // 조언자 선출 전체 토론 (50초)
+        // 조언자 선출 전체 토론 (50초) — 생존자 전원 Skip 시 조기 종료
         electionDiscussion: {
+          entry: 'clearSkips',
           on: {
             TIME_UP: { target: 'electionVote' },
-            SKIP: { target: 'electionVote' },
+            SKIP: [
+              { guard: 'allAliveSkipComplete', target: 'electionVote' },
+              { actions: 'addSkipVote' },
+            ],
           },
         },
         // 조언자 선출 투표 (7초) — 출마자는 투표권 없음
@@ -465,10 +547,10 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validElectionVote', actions: 'registerVote' },
             TIME_UP: [
-              // 전이 조건: 최다 득표자 단독 → 조언자 확정 후 첫날 낮 토론
-              { guard: 'voteDecided', actions: 'electAdvisor', target: '#dayDiscussion' },
+              // 전이 조건: 최다 득표자 단독 → 조언자 확정 후 첫날 낮 개인 발언
+              { guard: 'voteDecided', actions: 'electAdvisor', target: '#daySpeech' },
               // 전이 조건: 무득표 → 후보 중 무작위 선정 (문서 미정 가정)
-              { guard: 'voteNoTarget', actions: 'electAdvisorRandom', target: '#dayDiscussion' },
+              { guard: 'voteNoTarget', actions: 'electAdvisorRandom', target: '#daySpeech' },
               // 전이 조건: 동표 → 동표자만 후보로 재투표
               { actions: 'setTieCandidates', target: 'electionRevote' },
             ],
@@ -479,15 +561,15 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validElectionRevote', actions: 'registerVote' },
             TIME_UP: [
-              { guard: 'voteDecided', actions: 'electAdvisor', target: '#dayDiscussion' },
-              { actions: 'electAdvisorRandom', target: '#dayDiscussion' },
+              { guard: 'voteDecided', actions: 'electAdvisor', target: '#daySpeech' },
+              { actions: 'electAdvisorRandom', target: '#daySpeech' },
             ],
           },
         },
       },
     },
 
-    /* ═══ 낮 페이즈 (requirements 5번) ═══ */
+    /* ═══ 낮 페이즈 (requirements 5번·7번 발언 순서) ═══ */
     day: {
       initial: 'dawn',
       states: {
@@ -498,13 +580,14 @@ export const gameMachine = setup({
           always: [
             // 전이 조건: 자청비 생존 + 사용 가능한 꽃 있음 → 꽃 선택 (10초)
             { guard: 'flowerPhaseAvailable', target: 'flowerDecision' },
-            // 전이 조건: 꽃 단계 불가 → 밤 사망자 트리거 처리 후 낮 토론
+            // 전이 조건: 꽃 단계 불가 → 밤 사망자 트리거 처리 후 낮 진행
             { actions: 'setResumeDay', target: '#resolveDeaths' },
           ],
         },
         // 자청비 부활꽃/멸망꽃 선택 (10초) — 같은 아침 두 꽃 동시 사용 불가(전이가 1회로 보장)
         flowerDecision: {
           on: {
+            // 조언자: 이 아침의 발언 방향(역순/정순) 결정 — 개인 발언 시작 전까지 유효
             ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
             // 부활꽃: 그날 밤 악 진영 킬 사망자만 부활 → 남은 사망 트리거 처리
             FLOWER_REVIVE: {
@@ -522,19 +605,51 @@ export const gameMachine = setup({
             TIME_UP: { actions: 'setResumeDay', target: '#resolveDeaths' },
           },
         },
-        // 낮 전체 토론 (방 옵션 시간) — 조언자는 매 아침 발언 방향(역순/정순) 결정 가능
+        // 낮 개인 발언 — 방 옵션(80/120초)씩 순서대로, 조언자는 마지막 (7번 섹션)
+        // Skip은 현재 발언자 본인만 유효 → 즉시 다음 순서
+        personalSpeech: {
+          id: 'daySpeech',
+          entry: 'initSpeechQueue',
+          always: [
+            // 안전장치: 발언자가 아무도 없으면 곧장 전체 토론으로 (매 이벤트 후 재평가되므로 빈 큐만 대상)
+            { guard: 'noSpeakers', target: 'discussion' },
+          ],
+          on: {
+            TIME_UP: [
+              // 전이 조건: 마지막 발언자 종료 → 전체 토론
+              { guard: 'lastSpeech', actions: 'shiftSpeech', target: 'discussion' },
+              // 전이 조건: 다음 발언자 남음 (내부 전이 — 발언자 교체, 타이머 재시작은 세션 담당)
+              { actions: 'shiftSpeech' },
+            ],
+            SKIP: [
+              {
+                guard: and(['currentSpeakerSkip', 'lastSpeech']),
+                actions: 'shiftSpeech',
+                target: 'discussion',
+              },
+              { guard: 'currentSpeakerSkip', actions: 'shiftSpeech' },
+            ],
+          },
+        },
+        // 낮 전체 토론 (방 옵션 3분/5분) — 생존자 전원 Skip 시 조기 종료 → 투표
         discussion: {
           id: 'dayDiscussion',
+          entry: 'clearSkips',
           on: {
-            ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
             TIME_UP: [
               // 전이 조건: 구미호가 전날 밤 유혹 사용 → 투표 단계 전체 스킵, 바로 밤 (5-2항)
               { guard: 'seduceActive', actions: 'consumeSeduce', target: '#night' },
               { target: 'vote' },
             ],
             SKIP: [
-              { guard: 'seduceActive', actions: 'consumeSeduce', target: '#night' },
-              { target: 'vote' },
+              // 전이 조건: 생존자 전원 skip — TIME_UP과 동일하게 유혹 분기 적용
+              {
+                guard: and(['allAliveSkipComplete', 'seduceActive']),
+                actions: 'consumeSeduce',
+                target: '#night',
+              },
+              { guard: 'allAliveSkipComplete', target: 'vote' },
+              { actions: 'addSkipVote' },
             ],
           },
         },
@@ -553,11 +668,10 @@ export const gameMachine = setup({
             ],
           },
         },
-        // 동표 시 최다득표자 동시 발언 (20초)
+        // 동표 시 최다득표자 동시 발언 (20초) — Skip 없음 (동시 발언이므로)
         tieSpeech: {
           on: {
             TIME_UP: { target: 'revote' },
-            SKIP: { target: 'revote' },
           },
         },
         // 재투표 — 재투표에서도 동표면 최다득표자 중 무작위 1인 처형 (5-4항)
@@ -572,11 +686,15 @@ export const gameMachine = setup({
             ],
           },
         },
-        // 최후의 변론 (20초) — 처형 대상자만 발언, Skip으로 조기 종료 가능
+        // 최후의 변론 (20초) — 처형 대상자만 발언, 본인 Skip으로 즉시 사망 처리
         finalPlea: {
           on: {
             TIME_UP: { actions: ['enqueueExecution', 'setResumeNight'], target: '#resolveDeaths' },
-            SKIP: { actions: ['enqueueExecution', 'setResumeNight'], target: '#resolveDeaths' },
+            SKIP: {
+              guard: 'condemnedSkip',
+              actions: ['enqueueExecution', 'setResumeNight'],
+              target: '#resolveDeaths',
+            },
           },
         },
       },
@@ -596,11 +714,15 @@ export const gameMachine = setup({
             TIME_UP: { target: 'evilDiscussion' },
           },
         },
-        // 2) 악 진영 토론 (90초)
+        // 2) 악 진영 토론 (90초) — 악 생존자 전원 Skip 시 조기 종료
         evilDiscussion: {
+          entry: 'clearSkips',
           on: {
             TIME_UP: { target: 'evilVote' },
-            SKIP: { target: 'evilVote' },
+            SKIP: [
+              { guard: 'allEvilSkipComplete', target: 'evilVote' },
+              { actions: 'addSkipVote' },
+            ],
           },
         },
         // 3) 악 진영 처치 대상 투표 (10초) — 동률 시 무작위(문서 미정 가정), 무투표면 킬 없음
@@ -639,8 +761,8 @@ export const gameMachine = setup({
             { guard: 'gameWon', actions: 'setWinner', target: '#gameOver' },
             // 전이 조건: 큐 소진 + 복귀 지점 = 밤
             { guard: 'resumeToNight', target: '#night' },
-            // 전이 조건: 큐 소진 + 복귀 지점 = 낮 토론
-            { target: '#dayDiscussion' },
+            // 전이 조건: 큐 소진 + 복귀 지점 = 낮 (개인 발언부터)
+            { target: '#daySpeech' },
           ],
         },
         // 장화홍련: 피 맺힌 유서 — 1인 지목 동반 사망, 10초 미선택/포기 시 미발동

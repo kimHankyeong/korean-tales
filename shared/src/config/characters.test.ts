@@ -77,12 +77,16 @@ describe('특수 규칙 필드', () => {
 
 describe('모드별 로스터', () => {
   it('9인 모드 로스터는 정의된 9개 캐릭터와 정확히 일치한다', () => {
-    const roster = ROSTER_BY_MODE[9];
-    expect(roster).not.toBeNull();
-    expect(new Set(roster!)).toEqual(new Set(CHARACTERS.map((c) => c.id)));
+    expect(new Set(ROSTER_BY_MODE[9])).toEqual(new Set(CHARACTERS.map((c) => c.id)));
   });
 
-  it('6인 모드 로스터는 아직 미정(null)이다', () => {
-    expect(ROSTER_BY_MODE[6]).toBeNull();
+  it('7인 모드 로스터는 깡철이·까치선비를 제외한 7인 구성이다', () => {
+    const roster = ROSTER_BY_MODE[7];
+    expect(roster).toHaveLength(7);
+    expect(roster).not.toContain('kkangcheol');
+    expect(roster).not.toContain('kkachi');
+    // 전원이 정의된 캐릭터여야 함
+    const all = new Set(CHARACTERS.map((c) => c.id));
+    for (const id of roster) expect(all.has(id)).toBe(true);
   });
 });

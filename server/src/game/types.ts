@@ -3,7 +3,15 @@
  * 캐릭터/스킬 고정 정의는 @korean-tales/shared 참조.
  */
 
-import type { CharacterId, DeathCause, Faction, InvestigationResult, SkillId } from '@korean-tales/shared';
+import type {
+  CharacterId,
+  DeathCause,
+  Faction,
+  InvestigationResult,
+  PlayerMode,
+  RoomTimerSettings,
+  SkillId,
+} from '@korean-tales/shared';
 
 /** 게임에 참여 중인 플레이어의 런타임 상태 */
 export interface GamePlayer {
@@ -54,6 +62,14 @@ export interface GameContext {
   players: GamePlayer[];
   /** 일차 — 1부터 시작, 새벽(dawn)마다 +1 */
   day: number;
+  /** 인원수 모드 — 7인 모드는 조언자 선출 없음 (1번 섹션) */
+  mode: PlayerMode;
+  /** 방장이 선택한 개인 발언·전체 토론 시간 (1번 섹션 옵션) */
+  roomSettings: RoomTimerSettings;
+  /** 낮 개인 발언 남은 순서 (head = 현재 발언자). 매 아침 조언자 규칙으로 재계산 */
+  speechQueue: string[];
+  /** 전체 토론 skip 집계 — 생존자 전원 skip 시 조기 종료 (1번 섹션) */
+  skipVotes: string[];
 
   /* 조언자 (requirements 7번) */
   advisorId: string | null;
@@ -97,10 +113,14 @@ export interface GameContext {
 }
 
 export type GameEvent =
-  /** 서버 권위 타이머 만료 (타이머 시스템은 추후 연결 — 지금은 외부 이벤트로만 취급) */
+  /** 서버 권위 타이머 만료 — GameSession(session.ts)의 PhaseTimer가 발행 */
   | { type: 'TIME_UP' }
-  /** 개인 발언·토론·변론 조기 종료 (전원 skip 집계는 소켓 연동 시 서버가 판단해 1회 발행) */
-  | { type: 'SKIP' }
+  /**
+   * Skip 요청 (1번 섹션):
+   * - 개인 발언/어필/최후의 변론: 발언 당사자 본인만 유효 → 즉시 다음 단계
+   * - 전체 토론(선출·낮·악 토론): 해당 생존자 전원이 누르면 조기 종료
+   */
+  | { type: 'SKIP'; playerId: string }
   /* 첫날 아침 — 조언자 선출 */
   | { type: 'CANDIDACY_APPLY'; playerId: string }
   /* 투표 (선출/처형/재투표 공용) */
@@ -128,4 +148,8 @@ export interface GameInput {
   players: GamePlayer[];
   /** 미지정 시 Math.random */
   rng?: () => number;
+  /** 인원수 모드 — 미지정 시 players 수로 추정 (7명이면 7인 모드) */
+  mode?: PlayerMode;
+  /** 방장이 선택한 타이머 옵션 — 미지정 시 DEFAULT_ROOM_TIMER_SETTINGS */
+  settings?: RoomTimerSettings;
 }

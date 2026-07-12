@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createActor } from 'xstate';
-import { CHARACTERS } from '@korean-tales/shared';
+import { CHARACTERS, CHARACTER_BY_ID, ROSTER_BY_MODE } from '@korean-tales/shared';
 import { gameMachine } from './machine';
 import type { GamePlayer } from './types';
 
@@ -21,6 +21,18 @@ function makePlayers(): GamePlayer[] {
   }));
 }
 
+/** 7인 모드 배치 — ROSTER_BY_MODE[7] 순서 (깡철이·까치선비 제외) */
+function makePlayers7(): GamePlayer[] {
+  return ROSTER_BY_MODE[7].map((characterId, i) => ({
+    id: `q${i + 1}`,
+    seat: i + 1,
+    characterId,
+    faction: CHARACTER_BY_ID[characterId].faction,
+    alive: true,
+    skillUses: {},
+  }));
+}
+
 function startGame(rng: () => number = () => 0) {
   const actor = createActor(gameMachine, { input: { players: makePlayers(), rng } });
   actor.start();
@@ -31,9 +43,15 @@ type Actor = ReturnType<typeof startGame>;
 
 const timeUp = (actor: Actor) => actor.send({ type: 'TIME_UP' });
 
-/** 출마자 없이 선출 단계 통과 → 첫날 낮 토론 */
+/** 출마자 없이 선출 단계 통과 → 첫날 낮 개인 발언 */
 function skipElection(actor: Actor) {
   timeUp(actor);
+}
+
+/** 낮 개인 발언 전원 통과 (타이머 만료로) */
+function passSpeeches(actor: Actor) {
+  let guard = 0;
+  while (actor.getSnapshot().matches({ day: 'personalSpeech' }) && guard++ < 20) timeUp(actor);
 }
 
 /** voters 전원이 targetId에 투표 */
@@ -56,18 +74,19 @@ function passNight(actor: Actor) {
 }
 
 describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
-  it('게임은 출마 신청 상태에서 시작한다', () => {
+  it('9인 모드는 출마 신청 상태에서 시작한다', () => {
     const actor = startGame();
     expect(actor.getSnapshot().matches({ firstMorning: 'candidacy' })).toBe(true);
   });
 
-  it('출마자가 없으면 조언자 없이 낮 토론으로 (발언 순서 정순 고정)', () => {
+  it('출마자가 없으면 조언자 없이 낮 개인 발언으로 (발언 순서 정순 고정)', () => {
     const actor = startGame();
     timeUp(actor);
     const snap = actor.getSnapshot();
-    expect(snap.matches({ day: 'discussion' })).toBe(true);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
     expect(snap.context.advisorId).toBeNull();
     expect(snap.context.advisorBroken).toBe(true);
+    expect(snap.context.speechQueue[0]).toBe('p1'); // 정순 고정
   });
 
   it('선출 풀 플로우: 출마 2인 → 어필×2 → 토론 → 투표 → 최다 득표자 확정', () => {
@@ -87,7 +106,20 @@ describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
     timeUp(actor);
     const snap = actor.getSnapshot();
     expect(snap.context.advisorId).toBe('p1');
-    expect(snap.matches({ day: 'discussion' })).toBe(true);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
+    // 조언자(p1)는 제일 마지막 발언
+    expect(snap.context.speechQueue.at(-1)).toBe('p1');
+  });
+
+  it('어필 발언은 현재 발언자 본인의 Skip으로만 즉시 넘어간다', () => {
+    const actor = startGame();
+    actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p1' });
+    actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p2' });
+    timeUp(actor); // → appeal, 현재 발언자 p1
+    actor.send({ type: 'SKIP', playerId: 'p2' }); // 본인 아님 — 무시
+    expect(actor.getSnapshot().context.appealQueue[0]).toBe('p1');
+    actor.send({ type: 'SKIP', playerId: 'p1' }); // 본인 skip → 다음
+    expect(actor.getSnapshot().context.appealQueue[0]).toBe('p2');
   });
 
   it('선출 동표 → 재투표 → 재동표면 무작위 선정', () => {
@@ -107,14 +139,49 @@ describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
     timeUp(actor); // 재동표 → 무작위 (rng=0 → p1)
     const snap = actor.getSnapshot();
     expect(snap.context.advisorId).toBe('p1');
-    expect(snap.matches({ day: 'discussion' })).toBe(true);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
   });
 });
 
-describe('낮 페이즈 (requirements 5번)', () => {
+describe('7인 모드 (requirements 1번 — 조언자 뽑기 제외)', () => {
+  it('조언자 선출 없이 바로 첫날 낮 개인 발언에서 시작한다 (정순 고정)', () => {
+    const actor = createActor(gameMachine, { input: { players: makePlayers7(), rng: () => 0 } });
+    actor.start();
+    const snap = actor.getSnapshot();
+    expect(snap.context.mode).toBe(7);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
+    expect(snap.context.advisorId).toBeNull();
+    expect(snap.context.speechQueue).toEqual(['q1', 'q2', 'q3', 'q4', 'q5', 'q6', 'q7']);
+  });
+});
+
+describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
+  it('개인 발언은 본인 Skip으로 즉시 다음 순서로 넘어간다 (타인 Skip 무시)', () => {
+    const actor = startGame();
+    skipElection(actor);
+    expect(actor.getSnapshot().context.speechQueue[0]).toBe('p1');
+    actor.send({ type: 'SKIP', playerId: 'p3' }); // 발언자 아님 — 무시
+    expect(actor.getSnapshot().context.speechQueue[0]).toBe('p1');
+    actor.send({ type: 'SKIP', playerId: 'p1' });
+    expect(actor.getSnapshot().context.speechQueue[0]).toBe('p2');
+  });
+
+  it('전체 토론은 생존자 전원 Skip 시 즉시 투표로 전환된다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    expect(actor.getSnapshot().matches({ day: 'discussion' })).toBe(true);
+    const ids = aliveIds(actor);
+    for (const id of ids.slice(0, -1)) actor.send({ type: 'SKIP', playerId: id });
+    expect(actor.getSnapshot().matches({ day: 'discussion' })).toBe(true); // 아직 1명 남음
+    actor.send({ type: 'SKIP', playerId: ids.at(-1)! }); // 마지막 1명 → 조기 종료
+    expect(actor.getSnapshot().matches({ day: 'vote' })).toBe(true);
+  });
+
   it('전원 기권이면 희생자 없이 밤으로 전환된다', () => {
     const actor = startGame();
     skipElection(actor);
+    passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 투표
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
     timeUp(actor);
@@ -125,6 +192,7 @@ describe('낮 페이즈 (requirements 5번)', () => {
   it('동표 → 동시 발언 → 재투표 → 재동표면 무작위 1인 처형', () => {
     const actor = startGame(() => 0);
     skipElection(actor);
+    passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, ['p1'], 'p5');
     voteAll(actor, ['p2'], 'p6');
@@ -143,9 +211,24 @@ describe('낮 페이즈 (requirements 5번)', () => {
     expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
   });
 
+  it('최후의 변론은 처형 대상자 본인 Skip으로 즉시 사망 처리된다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // → vote
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
+    timeUp(actor); // → finalPlea
+    actor.send({ type: 'SKIP', playerId: 'p2' }); // 대상자 아님 — 무시
+    expect(actor.getSnapshot().matches({ day: 'finalPlea' })).toBe(true);
+    actor.send({ type: 'SKIP', playerId: 'p1' }); // 본인 skip → 즉시 처형
+    expect(player(actor, 'p1').alive).toBe(false);
+    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+  });
+
   it('구미호 유혹: 다음날 토론 후 투표를 통째로 스킵하고 바로 밤으로', () => {
     const actor = startGame();
     skipElection(actor);
+    passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
     timeUp(actor); // → night
@@ -155,8 +238,9 @@ describe('낮 페이즈 (requirements 5번)', () => {
     actor.send({ type: 'GUMIHO_SEDUCE' });
     timeUp(actor); // → dawn → 꽃 선택 (멸망꽃 사용 가능하므로 표시)
     expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
-    actor.send({ type: 'FLOWER_PASS' }); // → (사망 없음) → 낮 토론
-    expect(actor.getSnapshot().matches({ day: 'discussion' })).toBe(true);
+    actor.send({ type: 'FLOWER_PASS' }); // → (사망 없음) → 낮 개인 발언
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
+    passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 유혹 발동: 투표 스킵, 바로 밤
     const snap = actor.getSnapshot();
     expect(snap.matches({ night: 'goodSkills' })).toBe(true);
@@ -167,6 +251,7 @@ describe('낮 페이즈 (requirements 5번)', () => {
 describe('밤 페이즈 (requirements 4번)', () => {
   function toNight(actor: Actor) {
     skipElection(actor);
+    passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
     timeUp(actor); // → night
@@ -182,6 +267,18 @@ describe('밤 페이즈 (requirements 4번)', () => {
     });
   });
 
+  it('악 토론은 악 진영 생존자 전원 Skip 시 조기 종료된다', () => {
+    const actor = startGame();
+    toNight(actor);
+    timeUp(actor); // goodSkills → evilDiscussion
+    actor.send({ type: 'SKIP', playerId: 'p5' }); // 선 진영 — 무시
+    actor.send({ type: 'SKIP', playerId: 'p1' });
+    actor.send({ type: 'SKIP', playerId: 'p2' });
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
+    actor.send({ type: 'SKIP', playerId: 'p3' }); // 악 전원 완료
+    expect(actor.getSnapshot().matches({ night: 'evilVote' })).toBe(true);
+  });
+
   it('악 투표로 킬 → 새벽에 사망 반영 → 부활꽃으로 부활 가능', () => {
     const actor = startGame();
     toNight(actor);
@@ -195,7 +292,7 @@ describe('밤 페이즈 (requirements 4번)', () => {
     actor.send({ type: 'FLOWER_REVIVE', targetId: 'p5' });
     const snap = actor.getSnapshot();
     expect(player(actor, 'p5').alive).toBe(true);
-    expect(snap.matches({ day: 'discussion' })).toBe(true);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
     // 부활꽃 소모 확인
     expect(player(actor, 'p4').skillUses['revival-flower']).toBe(1);
   });
@@ -217,6 +314,7 @@ describe('밤 페이즈 (requirements 4번)', () => {
 
 describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
   function executeTarget(actor: Actor, targetId: string) {
+    passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 투표
     voteAll(
       actor,
@@ -256,7 +354,7 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     timeUp(actor); // → electionDiscussion
     timeUp(actor); // → electionVote
     voteAll(actor, ['p1'], 'p5');
-    timeUp(actor); // → day.discussion, advisor = p5
+    timeUp(actor); // → day.personalSpeech, advisor = p5
     expect(actor.getSnapshot().context.advisorId).toBe('p5');
     executeTarget(actor, 'p5');
     expect(actor.getSnapshot().matches({ resolveDeaths: 'awaitSuccession' })).toBe(true);
@@ -286,6 +384,7 @@ describe('승리 판정 (requirements 8번)', () => {
     skipElection(actor);
 
     // 1일차: p1(저승사자) 처형
+    passSpeeches(actor);
     timeUp(actor);
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
     timeUp(actor);
@@ -297,9 +396,10 @@ describe('승리 판정 (requirements 8번)', () => {
     expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
     actor.send({ type: 'FLOWER_DOOM', targetId: 'p2' });
     expect(player(actor, 'p2').alive).toBe(false);
-    expect(actor.getSnapshot().matches({ day: 'discussion' })).toBe(true);
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
 
     // 2일차: 마지막 악 p3(구미호) 처형 → 악 전멸 → 게임 종료
+    passSpeeches(actor);
     timeUp(actor);
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p3'), 'p3');
     timeUp(actor);

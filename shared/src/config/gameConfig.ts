@@ -5,15 +5,26 @@
  * 값의 근거는 각 항목의 주석(문서 섹션 번호)을 따른다.
  */
 
-/** 방(로비) 생성 옵션 — 1번 섹션 */
+/** 방(로비) 생성 옵션 — 1번 섹션 (6인 → 7인 모드로 변경 확정) */
 export const ROOM_OPTIONS = {
   /** 인원수 모드 */
-  playerModes: [6, 9],
+  playerModes: [7, 9],
   /** 개인 발언시간(초) — 방장이 선택 */
   personalSpeechSeconds: [80, 120],
   /** 전체 토론시간(초) — 방장이 선택 (3분 / 5분) */
   discussionSeconds: [180, 300],
 } as const;
+
+/** 방장이 선택한 타이머 설정 — 서버 권위 타이머가 낮 개인 발언·전체 토론 길이에 사용 */
+export interface RoomTimerSettings {
+  personalSpeechSeconds: (typeof ROOM_OPTIONS.personalSpeechSeconds)[number];
+  discussionSeconds: (typeof ROOM_OPTIONS.discussionSeconds)[number];
+}
+
+export const DEFAULT_ROOM_TIMER_SETTINGS: RoomTimerSettings = {
+  personalSpeechSeconds: ROOM_OPTIONS.personalSpeechSeconds[0],
+  discussionSeconds: ROOM_OPTIONS.discussionSeconds[0],
+};
 
 /** 서버 사이드 타이머(초) — 2번 섹션 표 */
 export const TIMER_CONFIG = {

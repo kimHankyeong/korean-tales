@@ -79,6 +79,33 @@ export function resolveVoteOutcome(votes: Record<string, string | 'ABSTAIN'>): V
   return top.length === 1 ? { kind: 'DECIDED', targetId: top[0]! } : { kind: 'TIE', candidates: top };
 }
 
+/* ── 낮 개인 발언 순서 (requirements 7번 조언자 규칙) ── */
+
+/**
+ * 매 아침의 개인 발언 순서를 계산한다.
+ * - 조언자는 매일 제일 마지막에 발언.
+ * - 방향은 조언자가 결정: FORWARD = 조언자 다음 번호부터 정순(번호 증가) 순환,
+ *   REVERSE = 조언자 이전 번호부터 역순(번호 감소) 순환.
+ * - 조언자가 없거나(7인 모드·방울 파기·미선출) 사망했으면 앞번호부터 정순 고정.
+ */
+export function computeSpeechOrder(
+  players: readonly GamePlayer[],
+  advisorId: string | null,
+  direction: 'FORWARD' | 'REVERSE',
+): string[] {
+  const alive = alivePlayers(players).sort((a, b) => a.seat - b.seat);
+  const advisor = advisorId ? alive.find((p) => p.id === advisorId) : undefined;
+  if (!advisor) return alive.map((p) => p.id);
+
+  const after = alive.filter((p) => p.seat > advisor.seat); // 조언자 뒤 번호 (오름차순)
+  const before = alive.filter((p) => p.seat < advisor.seat); // 조언자 앞 번호 (오름차순)
+  const ordered =
+    direction === 'FORWARD'
+      ? [...after, ...before] // 다음 번호부터 증가 방향 순환
+      : [...before.reverse(), ...after.reverse()]; // 이전 번호부터 감소 방향 순환
+  return [...ordered.map((p) => p.id), advisor.id];
+}
+
 /* ── 밤 킬 대상 판정 (requirements 4-3항) ─────────── */
 
 /**

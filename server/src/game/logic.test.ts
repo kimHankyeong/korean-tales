@@ -4,6 +4,7 @@ import {
   canUseSkill,
   checkWin,
   computeDeathTriggers,
+  computeSpeechOrder,
   investigate,
   processDeathQueue,
   resolveNightKillTarget,
@@ -55,6 +56,31 @@ describe('투표 판정 (requirements 5-4항)', () => {
     const outcome = resolveVoteOutcome({ a: 'x', b: 'y', c: 'x', d: 'y' });
     expect(outcome.kind).toBe('TIE');
     if (outcome.kind === 'TIE') expect(outcome.candidates.sort()).toEqual(['x', 'y']);
+  });
+});
+
+describe('낮 개인 발언 순서 (requirements 7번 조언자 규칙)', () => {
+  it('조언자가 없으면 앞번호부터 정순 고정', () => {
+    expect(computeSpeechOrder(makePlayers(), null, 'FORWARD')).toEqual([
+      'p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8', 'p9',
+    ]);
+  });
+
+  it('정순: 조언자 다음 번호부터 순환하고 조언자는 마지막', () => {
+    expect(computeSpeechOrder(makePlayers(), 'p3', 'FORWARD')).toEqual([
+      'p4', 'p5', 'p6', 'p7', 'p8', 'p9', 'p1', 'p2', 'p3',
+    ]);
+  });
+
+  it('역순: 조언자 이전 번호부터 감소 방향으로 순환하고 조언자는 마지막', () => {
+    expect(computeSpeechOrder(makePlayers(), 'p3', 'REVERSE')).toEqual([
+      'p2', 'p1', 'p9', 'p8', 'p7', 'p6', 'p5', 'p4', 'p3',
+    ]);
+  });
+
+  it('사망자는 발언 순서에서 제외된다', () => {
+    const players = makePlayers().map((p) => (p.id === 'p5' ? { ...p, alive: false } : p));
+    expect(computeSpeechOrder(players, null, 'FORWARD')).not.toContain('p5');
   });
 });
 
