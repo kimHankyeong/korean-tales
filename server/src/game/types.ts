@@ -112,37 +112,8 @@ export interface GameContext {
   rng: () => number;
 }
 
-export type GameEvent =
-  /** 서버 권위 타이머 만료 — GameSession(session.ts)의 PhaseTimer가 발행 */
-  | { type: 'TIME_UP' }
-  /**
-   * Skip 요청 (1번 섹션):
-   * - 개인 발언/어필/최후의 변론: 발언 당사자 본인만 유효 → 즉시 다음 단계
-   * - 전체 토론(선출·낮·악 토론): 해당 생존자 전원이 누르면 조기 종료
-   */
-  | { type: 'SKIP'; playerId: string }
-  /* 첫날 아침 — 조언자 선출 */
-  | { type: 'CANDIDACY_APPLY'; playerId: string }
-  /* 투표 (선출/처형/재투표 공용) */
-  | { type: 'VOTE'; voterId: string; targetId: string | 'ABSTAIN' }
-  /* 조언자: 매 아침 발언 방향 결정 */
-  | { type: 'ADVISOR_DIRECTION'; direction: 'FORWARD' | 'REVERSE' }
-  /* 낮 시작 — 자청비 */
-  | { type: 'FLOWER_REVIVE'; targetId: string }
-  | { type: 'FLOWER_DOOM'; targetId: string }
-  | { type: 'FLOWER_PASS' }
-  /* 밤 — 선 진영 */
-  | { type: 'HAETAE_INVESTIGATE'; targetId: string }
-  | { type: 'DOKKAEBI_PRANK' }
-  /* 밤 — 악 진영 */
-  | { type: 'EVIL_KILL_VOTE'; voterId: string; targetId: string }
-  | { type: 'JEOSEUNG_COMPANION'; targetId: string }
-  | { type: 'GUMIHO_SEDUCE' }
-  /* 사망 확정 트리거 응답 */
-  | { type: 'GRUDGE_TARGET'; targetId: string }
-  | { type: 'GRUDGE_FORGO' }
-  | { type: 'ADVISOR_SUCCEED'; targetId: string }
-  | { type: 'ADVISOR_DESTROY' };
+// 머신 이벤트는 client/server 공용 계약 — shared에 단일 원본이 있다
+export type { ClientGameAction, GameEvent } from '@korean-tales/shared';
 
 export interface GameInput {
   players: GamePlayer[];

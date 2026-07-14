@@ -231,6 +231,9 @@ export const gameMachine = setup({
     gameWon: ({ context }) => checkWin(context.players) !== null,
     // 전이 조건: 사망 처리 종료 후 복귀 지점이 밤
     resumeToNight: ({ context }) => context.resumeAfterDeaths === 'NIGHT',
+    // 투항은 선/악 팀만 가능 (중립 제외) — 30초 팀 동의 집계는 Room 레이어가 담당
+    validSurrender: ({ event }) =>
+      event.type === 'TEAM_SURRENDER' && (event.faction === 'EVIL' || event.faction === 'GOOD'),
   },
 
   actions: {
@@ -475,6 +478,11 @@ export const gameMachine = setup({
       awaiting: null,
     })),
     setWinner: assign(({ context }) => ({ winner: checkWin(context.players) })),
+    // 투항 승리: 항복한 팀의 상대 진영이 승리 (8번 섹션 — 일차 무관)
+    setSurrenderWinner: assign(({ event }) => {
+      if (event.type !== 'TEAM_SURRENDER') return {};
+      return { winner: (event.faction === 'EVIL' ? 'GOOD' : 'EVIL') as 'GOOD' | 'EVIL' };
+    }),
   },
 }).createMachine({
   id: 'game',
@@ -507,6 +515,11 @@ export const gameMachine = setup({
     rng: input.rng ?? Math.random,
   }),
   initial: 'setup',
+
+  // 전이 조건: 팀 전원 투항 확정(Room 레이어 30초 동의 완료) → 어느 상태에서든 즉시 게임 종료
+  on: {
+    TEAM_SURRENDER: { guard: 'validSurrender', actions: 'setSurrenderWinner', target: '#gameOver' },
+  },
 
   states: {
     /* ═══ 시작 분기 ═══ */

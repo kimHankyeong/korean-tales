@@ -1,13 +1,14 @@
 /**
- * korean_tales 실시간 게임 서버 (스켈레톤)
+ * korean_tales 실시간 게임 서버
  *
- * 아직 게임 로직 없음 — Socket.io 연결 수립과 shared 패키지 연동만 확인한다.
- * 게임 상태 머신(XState)·방 관리·타이머는 이후 세션에서 docs/requirements.md 기반으로 구현.
+ * Socket.io 이벤트 계약은 shared/src/socket/events.ts, 방/게임 연결은
+ * server/src/socket/registerHandlers.ts 참고. 게임 규칙은 docs/requirements.md가 원본.
  */
 
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import { CHARACTERS } from '@korean-tales/shared';
+import { registerHandlers } from './socket/registerHandlers';
 
 const PORT = Number(process.env.PORT ?? 4000);
 
@@ -16,13 +17,7 @@ const io = new Server(httpServer, {
   cors: { origin: '*' }, // 개발용 — 배포 시 도메인 제한
 });
 
-io.on('connection', (socket) => {
-  console.log(`[socket] connected: ${socket.id}`);
-
-  socket.on('disconnect', (reason) => {
-    console.log(`[socket] disconnected: ${socket.id} (${reason})`);
-  });
-});
+registerHandlers(io);
 
 httpServer.listen(PORT, () => {
   console.log(`korean_tales server listening on :${PORT} (characters loaded: ${CHARACTERS.length})`);

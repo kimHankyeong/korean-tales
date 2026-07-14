@@ -1,0 +1,281 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  SOCKET_EVENTS,
+  TIMER_CONFIG,
+  type GameOverPayload,
+  type GameRolePayload,
+  type PublicGameState,
+  type SurrenderProgressPayload,
+} from '@korean-tales/shared';
+import { Room, isValidSettings, type RoomEmitter } from './room';
+import { RoomManager } from './roomManager';
+
+/** 전송 기록용 페이크 이미터 — 스코프(방 전체/개인) 검증의 근거 */
+class FakeEmitter implements RoomEmitter {
+  roomEvents: { event: string; payload: unknown }[] = [];
+  playerEvents = new Map<string, { event: string; payload: unknown }[]>();
+
+  toRoom(event: string, payload: unknown): void {
+    this.roomEvents.push({ event, payload });
+  }
+  toPlayer(playerId: string, event: string, payload: unknown): void {
+    const list = this.playerEvents.get(playerId) ?? [];
+    list.push({ event, payload });
+    this.playerEvents.set(playerId, list);
+  }
+  playerEventsOf(playerId: string, event: string) {
+    return (this.playerEvents.get(playerId) ?? []).filter((e) => e.event === event);
+  }
+}
+
+function seededRng(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 9301 + 49297) % 233280;
+    return s / 233280;
+  };
+}
+
+function makeRoom(seed = 1) {
+  const emitter = new FakeEmitter();
+  const room = new Room('TEST01', { id: 'u1', name: '방장' }, emitter, seededRng(seed));
+  return { room, emitter };
+}
+
+/** u2~u9 입장 (9인 채움) */
+function fillRoom(room: Room, count = 8) {
+  for (let i = 2; i <= count + 1; i++) room.join({ id: `u${i}`, name: `유저${i}` });
+}
+
+/** 게임 중 방의 역할 배정 결과를 (개인 전송 기록에서) 수집 */
+function rolesOf(emitter: FakeEmitter, ids: string[]): Record<string, GameRolePayload> {
+  const roles: Record<string, GameRolePayload> = {};
+  for (const id of ids) {
+    const events = emitter.playerEventsOf(id, SOCKET_EVENTS.gameRole);
+    if (events.length > 0) roles[id] = events[0]!.payload as GameRolePayload;
+  }
+  return roles;
+}
+
+describe('방(로비) 시스템 (requirements 1번)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('설정 검증: ROOM_OPTIONS의 선택지만 허용된다', () => {
+    expect(isValidSettings({ mode: 9, personalSpeechSeconds: 80, discussionSeconds: 180 })).toBe(true);
+    expect(isValidSettings({ mode: 7, personalSpeechSeconds: 120, discussionSeconds: 300 })).toBe(true);
+    expect(isValidSettings({ mode: 6 as never, personalSpeechSeconds: 80, discussionSeconds: 180 })).toBe(false);
+    expect(isValidSettings({ mode: 9, personalSpeechSeconds: 90 as never, discussionSeconds: 180 })).toBe(false);
+    expect(isValidSettings({ mode: 9, personalSpeechSeconds: 80, discussionSeconds: 240 as never })).toBe(false);
+  });
+
+  it('정원(모드 인원)을 넘는 입장은 거부된다', () => {
+    const { room } = makeRoom();
+    fillRoom(room); // 9명 참
+    expect(room.join({ id: 'u10', name: '늦은사람' })).toBe('ROOM_FULL');
+  });
+
+  it('방 설정은 방장만 바꿀 수 있다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    expect(
+      room.updateSettings('u2', { mode: 7, personalSpeechSeconds: 120, discussionSeconds: 300 }),
+    ).toBe('NOT_HOST');
+    expect(
+      room.updateSettings('u1', { mode: 7, personalSpeechSeconds: 120, discussionSeconds: 300 }),
+    ).toBeNull();
+    expect(room.settings.personalSpeechSeconds).toBe(120);
+  });
+
+  it('방장이 나가면 다음 입장자가 방장을 승계한다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    room.leave('u1');
+    expect(room.hostId).toBe('u2');
+  });
+
+  it('인원이 모드와 다르면 시작할 수 없다', () => {
+    const { room } = makeRoom();
+    fillRoom(room, 5); // 6명뿐
+    expect(room.startGame('u1')).toBe('NOT_ENOUGH_PLAYERS');
+  });
+});
+
+describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('각자에게 본인 캐릭터만 1회 비공개 전송되고, 전체 채널로는 역할이 나가지 않는다', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    expect(room.startGame('u1')).toBeNull();
+
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+    // 전원이 정확히 1개의 role 이벤트를 받았고, 캐릭터는 중복 없음
+    for (const id of ids) expect(emitter.playerEventsOf(id, SOCKET_EVENTS.gameRole)).toHaveLength(1);
+    expect(new Set(Object.values(roles).map((r) => r.characterId)).size).toBe(9);
+
+    // 방 전체 브로드캐스트(gameState 등)에는 characterId가 등장하지 않아야 한다
+    const broadcastJson = JSON.stringify(emitter.roomEvents);
+    expect(broadcastJson).not.toContain('characterId');
+  });
+
+  it('진영 선호: 슬롯이 남으면 반영된다 (보장은 아님)', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.setFactionPreference('u5', 'EVIL');
+    room.startGame('u1');
+    const role = rolesOf(emitter, ['u5']).u5!;
+    expect(role.faction).toBe('EVIL'); // 악 3자리 중 하나 — 단독 선호라 항상 반영
+  });
+
+  it('시작 직후 공개 상태가 브로드캐스트된다 (9인 → 조언자 출마 단계)', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const states = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameState);
+    const last = states.at(-1)!.payload as PublicGameState;
+    expect(last.phase).toBe('firstMorning.candidacy');
+    expect(last.players).toHaveLength(9);
+  });
+});
+
+describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  /** 게임 시작 후 밤까지 진행하고, 역할 배정을 돌려준다 */
+  function startAndGoNight(room: Room, emitter: FakeEmitter) {
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+    const session = room.session!;
+    session.send({ type: 'TIME_UP' }); // 선출 스킵 (출마 없음)
+    while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
+    session.send({ type: 'TIME_UP' }); // 토론 → 투표
+    for (const id of ids) session.send({ type: 'VOTE', voterId: id, targetId: 'ABSTAIN' });
+    session.send({ type: 'TIME_UP' }); // → 밤
+    expect(session.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    return { roles, ids };
+  }
+
+  it('해태 조사 결과는 해태 본인에게만 전송된다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const haetaeId = ids.find((id) => roles[id]!.characterId === 'haetae')!;
+    const targetId = ids.find((id) => id !== haetaeId)!;
+
+    room.handleAction(haetaeId, { type: 'HAETAE_INVESTIGATE', targetId });
+
+    expect(emitter.playerEventsOf(haetaeId, SOCKET_EVENTS.gameInvestigation)).toHaveLength(1);
+    for (const id of ids.filter((i) => i !== haetaeId)) {
+      expect(emitter.playerEventsOf(id, SOCKET_EVENTS.gameInvestigation)).toHaveLength(0);
+    }
+    // 방 전체로도 나가지 않음
+    expect(emitter.roomEvents.some((e) => e.event === SOCKET_EVENTS.gameInvestigation)).toBe(false);
+  });
+
+  it('악 채널 채팅은 밤에 악 진영 생존자에게만 중계된다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const evilIds = ids.filter((id) => roles[id]!.faction === 'EVIL');
+    const goodId = ids.find((id) => roles[id]!.faction === 'GOOD')!;
+
+    // 선 진영은 악 채널 발신 불가
+    expect(room.chat(goodId, 'EVIL', '몰래 듣기')).toBe('NOT_ALLOWED');
+
+    expect(room.chat(evilIds[0]!, 'EVIL', '오늘 누굴 노릴까')).toBeNull();
+    for (const id of evilIds) {
+      expect(emitter.playerEventsOf(id, SOCKET_EVENTS.chatMessage)).toHaveLength(1);
+    }
+    expect(emitter.playerEventsOf(goodId, SOCKET_EVENTS.chatMessage)).toHaveLength(0);
+    expect(emitter.roomEvents.some((e) => e.event === SOCKET_EVENTS.chatMessage)).toBe(false);
+  });
+
+  it('낮에는 악 채널을 쓸 수 없다', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+    const evilId = ids.find((id) => roles[id]!.faction === 'EVIL')!;
+    // 아직 첫날 아침(선출) — 밤이 아니므로 거부
+    expect(room.chat(evilId, 'EVIL', '벌써?')).toBe('NOT_ALLOWED');
+  });
+
+  it('투항 진행 상황은 같은 팀에게만 전송되고, 전원 동의 시 상대 팀이 승리한다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const evilIds = ids.filter((id) => roles[id]!.faction === 'EVIL');
+    const nonEvilIds = ids.filter((id) => roles[id]!.faction !== 'EVIL');
+
+    // 악 팀 전원 순차 동의
+    for (const id of evilIds) expect(room.agreeSurrender(id)).toBeNull();
+
+    // 진행 상황은 악 팀에게만
+    for (const id of evilIds) {
+      expect(
+        emitter.playerEventsOf(id, SOCKET_EVENTS.surrenderProgress).length,
+      ).toBeGreaterThan(0);
+    }
+    for (const id of nonEvilIds) {
+      expect(emitter.playerEventsOf(id, SOCKET_EVENTS.surrenderProgress)).toHaveLength(0);
+    }
+
+    // 게임 종료 — 상대(선) 승리 + 역할 전체 공개
+    const over = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameOver);
+    expect(over).toHaveLength(1);
+    const payload = over[0]!.payload as GameOverPayload;
+    expect(payload.winner).toBe('GOOD');
+    expect(payload.roles).toHaveLength(9);
+    expect(room.inGame).toBe(false);
+  });
+
+  it('30초 내 전원 동의 실패 시 투항이 취소되고 게임은 계속된다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const evilIds = ids.filter((id) => roles[id]!.faction === 'EVIL');
+
+    room.agreeSurrender(evilIds[0]!); // 1명만 동의
+    vi.advanceTimersByTime(TIMER_CONFIG.surrenderConsent * 1000);
+
+    const events = emitter.playerEventsOf(evilIds[0]!, SOCKET_EVENTS.surrenderProgress);
+    const last = events.at(-1)!.payload as SurrenderProgressPayload;
+    expect(last.status).toBe('CANCELLED');
+    expect(room.inGame).toBe(true); // 게임 계속
+
+    // 중립·사망자는 투항 불가 검증 (바리공주 = NEUTRAL)
+    const neutralId = ids.find((id) => roles[id]!.faction === 'NEUTRAL')!;
+    expect(room.agreeSurrender(neutralId)).toBe('NOT_ALLOWED');
+  });
+});
+
+describe('RoomManager', () => {
+  it('방 생성·코드 입장·퇴장·빈 방 폐기', () => {
+    const manager = new RoomManager(() => new FakeEmitter(), seededRng(5));
+    const room = manager.create({ id: 'a', name: 'A' });
+    expect(room.code).toHaveLength(6);
+    expect(manager.get(room.code)).toBe(room);
+
+    const joined = manager.join(room.code.toLowerCase(), { id: 'b', name: 'B' });
+    expect(joined).toBe(room); // 대소문자 무관
+    expect(manager.roomOf('b')).toBe(room);
+
+    expect(manager.join('NOPE99', { id: 'c', name: 'C' })).toBe('NOT_FOUND');
+
+    manager.leave('a');
+    manager.leave('b');
+    expect(manager.get(room.code)).toBeUndefined(); // 빈 방 폐기
+  });
+
+  it('다른 방으로 이동하면 기존 방에서 자동 제거된다', () => {
+    const manager = new RoomManager(() => new FakeEmitter(), seededRng(6));
+    const room1 = manager.create({ id: 'a', name: 'A' });
+    manager.join(room1.code, { id: 'b', name: 'B' });
+    const room2 = manager.create({ id: 'b', name: 'B' }); // b가 새 방 생성
+    expect(room1.players.some((p) => p.id === 'b')).toBe(false);
+    expect(manager.roomOf('b')).toBe(room2);
+  });
+});
