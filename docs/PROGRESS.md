@@ -1,5 +1,17 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 6 완료: 클라이언트 핵심 공용 UI (2026-07-14)
+
+- `client/src/components/` — 서버 목(mock) 데이터로 독립 동작하는 공용 UI 3종 (requirements 6번)
+  - **ChatWindow**: 낮/밤 표시(`PhaseBadge` — 해/달 아이콘이 화면 중앙에 등장했다가 framer-motion layoutId FLIP으로 "낮" 텍스트 옆에 고정), 카운트다운 문구(`CountdownText` — `토론 시간 00초 남음`, timer:sync의 serverNow 시계 보정), 발언 순서 시스템 메시지(`(해)낮-80초-1번` — `lib/format.ts`)
+  - **최후의 변론 모드**: `condemnedId` prop — 처형 확정자만 입력 가능, 나머지는 입력창 비활성화 + 안내 플레이스홀더
+  - **SelectionPanel** (투표/스킬 공용): 화면 중앙 1/6 높이, 생존자 번호+프로필 가로 나열(사망자 제외), 프로필 클릭 → 하단 버튼 활성화. props 분기 — `buttonLabel`("투표하기"/"선택하기"), `allowAbstain`(기권 타일), `allowForgo`("스킬 포기" 버튼), `disabledIds`(본인 제외 등)
+- `store/gameStore.ts` — Zustand 목 스토어 (소켓 연동 시 SOCKET_EVENTS 핸들러가 액션을 호출하는 구조로 확장 예정)
+- `App.tsx` — 데모 플레이그라운드: 페이즈 전환·타이머 시작·발언자 공지·3종 패널 열기·변론 모드 토글을 버튼으로 확인 가능 (`npm run dev:client`)
+- client 테스트 환경 구축 (jsdom + @testing-library/react) — 컴포넌트 테스트 14개
+- 전체 검증: 테스트 **133개**(shared 14·server 105·client 14) 통과, typecheck·프로덕션 빌드(Node 22) 성공
+- 참고: jsdom에 `scrollTo`가 없어 채팅 자동 스크롤은 `scrollTop` 대입으로 구현
+
 ## 세션 5 완료: Socket.io 실시간 레이어 + 방(로비) 시스템 (2026-07-14)
 
 - **이벤트 계약** (`shared/src/socket/events.ts` 확장 + `shared/src/game/gameEvents.ts` 신설 — 머신 이벤트를 client/server 공용 단일 원본으로 이관)
@@ -92,10 +104,9 @@
 - npm workspaces 모노레포(client/server/shared), 기술 스택 세팅, CLAUDE.md, docs/requirements.md 배치
 - 게임 규칙 상수 `gameConfig.ts` 분리, 서버는 Socket.io 연결 스켈레톤만 존재
 
-## 다음 세션 할 일 (세션 6)
+## 다음 세션 할 일 (세션 7)
 
-- **클라이언트 UI 시작** (requirements 10번 5단계): 로비(방 생성/입장·설정·진영 선호) + 게임 화면 뼈대
-  - socket.io-client 연결 훅 + Zustand 스토어 (`SOCKET_EVENTS` 계약 기반)
-  - 투표/스킬 선택 공용 컴포넌트 — 레이아웃 동일, 버튼 텍스트만 "투표하기"/"선택하기" 분기, 기권·스킬 포기 옵션
-  - 타이머 카운트다운 바 (`timerSync`의 endsAt/serverNow 보정)
-- 이후: 6번 섹션 부속 UI(메모장·스킬북·투항 버튼·P버튼 — P버튼은 머신 이벤트 추가 필요) → 9인 풀 시뮬레이션 테스트(10번 9단계)
+- **소켓 연동 실화면**: 로비 화면(방 생성/입장·설정·진영 선호) + 게임 화면 조립
+  - socket.io-client 연결 훅 — `SOCKET_EVENTS` 수신을 gameStore 액션에 배선 (목 → 실데이터 교체)
+  - 서버 `PublicGameState`/`timerSync`를 ChatWindow·SelectionPanel에 연결, `gameAction` 발신
+- 이후: 6번 섹션 부속 UI(메모장·스킬북 모달·플레이어 목록 패널·투항 버튼·P버튼 — P버튼은 머신 이벤트 추가 필요) → 9인 풀 시뮬레이션 테스트(10번 9단계)
