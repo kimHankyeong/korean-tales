@@ -1,5 +1,15 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 9 완료: Render 배포 설정 정리 (2026-07-15)
+
+- **render.yaml 보완**: `CLIENT_ORIGIN`(CORS 제한)·`COOKIE_SECRET`(generateValue 자동 생성) 환경변수 추가, 디스크/무료 플랜 주의사항·README 참조 주석 정리
+- **서버 배포 설정 배선**: CORS 오리진을 `CLIENT_ORIGIN` 환경변수로 제한 가능(`corsOrigin()` — REST·Socket.io 공용), `COOKIE_SECRET`으로 쿠키 서명(선택)
+- **환경변수 예시**: `server/.env.example` 확장(DB 경로·CORS·쿠키 시크릿·REQUIRE_AUTH), `client/.env.example` 신설(`VITE_SERVER_URL`)
+- **README.md 재작성** (CRA 잔재 제거): 프로젝트 소개·로컬 개발 절차 + **Render 배포 절차** — GitHub 연결 → 블루프린트 배포 → 영구 디스크 마운트 확인(Shell에서 /data 확인), 무료 플랜 디스크 미지원·콜드스타트 주의사항
+- **콜드스타트 안내 UI** (`client/src/components/ServerWakeNotice.tsx`): 로비 진입 시 `/health` 핑 → 1.5초 내 응답 없으면 "서버를 깨우는 중입니다… 최대 1분" 배너(스피너), 3초 간격 재시도, 90초 초과 시 연결 실패 안내. 깨어나면 자동 제거. 데모 App에 장착, 테스트 3개(fetch 목 주입)
+- 검증: 테스트 **157개**(shared 14·server 121·client 22) 통과, typecheck·빌드 성공
+- 참고: AnimatePresence exit 애니메이션이 fake timer 테스트에서 요소 제거를 지연시켜 배너는 조건부 렌더(즉시 제거)로 구현
+
 ## 세션 8 완료: 계정 시스템 (2026-07-15)
 
 - **DB**: Prisma 6 + SQLite (requirements 11번 — PostgreSQL 전환 가능 구조, SQLite 전용 기능 미사용)

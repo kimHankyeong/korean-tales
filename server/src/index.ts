@@ -8,7 +8,7 @@
 
 import { Server } from 'socket.io';
 import { CHARACTERS } from '@korean-tales/shared';
-import { createApp } from './app';
+import { corsOrigin, createApp } from './app';
 import { AuthService } from './auth/service';
 import { prisma } from './db';
 import { registerHandlers } from './socket/registerHandlers';
@@ -22,7 +22,8 @@ const app = await createApp(auth);
 await app.ready();
 
 const io = new Server(app.server, {
-  cors: { origin: true, credentials: true }, // 배포 시 도메인 제한
+  // REST와 동일한 CORS 정책 — CLIENT_ORIGIN 환경변수로 도메인 제한
+  cors: { origin: corsOrigin(), credentials: true },
 });
 registerHandlers(io, Math.random, { auth, requireAuth: REQUIRE_AUTH });
 

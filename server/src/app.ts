@@ -9,12 +9,26 @@ import cors from '@fastify/cors';
 import { registerAuthRoutes } from './auth/routes';
 import type { AuthService } from './auth/service';
 
+/**
+ * CORS 허용 오리진 — CLIENT_ORIGIN 환경변수(쉼표 구분)로 제한.
+ * 미설정 시 모든 오리진 반사(개발용). 배포 시 반드시 클라이언트 도메인을 지정할 것.
+ */
+export function corsOrigin(): string[] | true {
+  const raw = process.env.CLIENT_ORIGIN?.trim();
+  if (!raw) return true;
+  return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
+}
+
 export async function createApp(auth: AuthService): Promise<FastifyInstance> {
   const app = Fastify();
 
-  await app.register(cookie);
+  await app.register(cookie, {
+    // 선택: 쿠키 서명 시크릿 — 세션 토큰 자체가 불투명 랜덤 값이라 필수는 아니지만,
+    // 설정하면 쿠키 변조 감지가 한 겹 추가된다 (.env.example의 COOKIE_SECRET)
+    secret: process.env.COOKIE_SECRET,
+  });
   await app.register(cors, {
-    origin: true, // 개발용 — 배포 시 클라이언트 도메인으로 제한
+    origin: corsOrigin(),
     credentials: true, // httpOnly 세션 쿠키 전송 허용
   });
 

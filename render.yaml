@@ -1,31 +1,38 @@
-# Render 블루프린트 초안 — korean_tales 게임 서버 (requirements 12번 배포 환경)
+# Render 블루프린트 — korean_tales 게임 서버 (requirements 12번 배포 환경)
+# 배포 절차는 README.md의 "Render 배포" 섹션 참고.
 #
 # ⚠️ 영구 디스크(disk) 주의:
 #   Render의 persistent disk는 **무료(free) 플랜에서 지원되지 않는다.**
-#   - plan: free 로 배포하면 아래 disk 블록을 제거해야 하며, SQLite 파일이
-#     재배포/재시작 시 초기화된다 (계정 데이터 소실 — 테스트 배포용으로만).
-#   - 계정 데이터를 보존하려면 plan: starter 이상으로 올리고 disk를 유지할 것.
-#   - DATABASE_URL이 마운트 경로(/data)를 가리키므로, 디스크 없이 배포할 때는
-#     file:./dev.db 등 임시 경로로 바꿔야 한다.
+#   - plan: free 로 배포하려면 아래 disk 블록을 제거(또는 주석)해야 하며,
+#     이 경우 SQLite 파일이 재배포/재시작 시 초기화된다 (계정 데이터 소실 — 테스트 배포용).
+#     디스크 없이 배포할 때는 DATABASE_URL을 file:./dev.db 등 임시 경로로 바꿀 것.
+#   - 계정 데이터를 보존하려면 plan: starter 이상으로 올리고 disk를 유지한다.
 #
 # 무료 티어 특성(12번 섹션): 15분 무활동 시 슬립 → 재접속 시 수십 초 콜드스타트.
+# 클라이언트 로비의 "서버를 깨우는 중" 안내(ServerWakeNotice)가 이 구간을 표시한다.
 
 services:
   - type: web
     name: korean-tales-server
     runtime: node
-    plan: free # 계정 데이터 보존이 필요해지면 starter로 변경 (disk 참고)
+    plan: free # 계정 데이터 보존이 필요해지면 starter로 변경 (위 disk 주의 참고)
     buildCommand: npm install && npm run db:generate --workspace @korean-tales/server
     # start:deploy = prisma db push(스키마 반영) 후 서버 기동
     startCommand: npm run start:deploy --workspace @korean-tales/server
     healthCheckPath: /health
     envVars:
       - key: NODE_VERSION
-        value: 22.23.1 # Node 24.11.1의 Windows 빌드 크래시와 별개로, LTS 고정
+        value: 22.23.1 # Node 22 LTS 고정 (CLAUDE.md의 Node 24 이슈 참고)
       - key: NODE_ENV
-        value: production
+        value: production # 세션 쿠키 Secure 플래그 활성화
       - key: DATABASE_URL
         value: file:/data/korean_tales.db # 영구 디스크 마운트 경로 (아래 disk와 일치)
+      # 클라이언트 배포 도메인으로 CORS 제한 — 클라이언트 호스팅 주소로 교체할 것
+      - key: CLIENT_ORIGIN
+        value: https://korean-tales.example.com
+      # 쿠키 서명 시크릿 (선택) — Render가 배포 시 랜덤 값을 생성해 준다
+      - key: COOKIE_SECRET
+        generateValue: true
       # 게스트 차단으로 확정되면 주석 해제 (requirements 9번 미정)
       # - key: REQUIRE_AUTH
       #   value: "true"

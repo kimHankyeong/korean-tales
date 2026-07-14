@@ -11,6 +11,7 @@ import { CHARACTERS, type GameOverPayload } from '@korean-tales/shared';
 import { ChatWindow } from './components/ChatWindow';
 import { GameOverScreen } from './components/GameOverScreen';
 import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
+import { ServerWakeNotice } from './components/ServerWakeNotice';
 import { useGameStore } from './store/gameStore';
 
 type PanelKind = 'NONE' | 'VOTE' | 'SKILL' | 'SKILL_FORGO';
@@ -53,6 +54,9 @@ export default function App() {
 
   return (
     <main className="flex h-screen flex-col gap-3 bg-slate-950 p-4 text-slate-100 md:flex-row">
+      {/* 무료 서버 콜드스타트 안내 — 슬립에서 깨어나는 동안만 표시 (12번 섹션) */}
+      <ServerWakeNotice />
+
       {/* 채팅창 */}
       <div className="min-h-0 flex-1">
         <ChatWindow
