@@ -12,9 +12,11 @@
 | 영역 | 스택 |
 |---|---|
 | client | React + TypeScript + Vite, Zustand(상태), Tailwind CSS v4(스타일), Framer Motion(애니메이션), socket.io-client |
-| server | Node.js + TypeScript, Socket.io(실시간), XState(게임 상태 머신), tsx(실행) |
-| shared | client·server 공유 타입/상수 (캐릭터·스킬 모델, 게임 규칙 config) |
+| server | Node.js + TypeScript, Fastify(REST 인증), Socket.io(실시간), XState(게임 상태 머신), tsx(실행) |
+| DB/인증 | SQLite + Prisma (경로는 `DATABASE_URL`), argon2 해시, httpOnly 세션 쿠키 — REST와 소켓 핸드셰이크가 세션 공유 |
+| shared | client·server 공유 타입/상수 (캐릭터·스킬 모델, 게임 규칙 config, 소켓 이벤트 계약) |
 | 테스트 | Vitest |
+| 배포 | Render (render.yaml 블루프린트 — 영구 디스크는 유료 플랜부터, 주석 참고) |
 
 ## 폴더 구조 (npm workspaces 모노레포)
 
@@ -35,6 +37,8 @@ korean_tale/
 주요 명령 (루트에서 실행):
 - `npm run dev:client` / `npm run dev:server` — 개발 서버
 - `npm run typecheck` / `npm run test` / `npm run build` — 전체 워크스페이스 대상
+- `npm run db:generate` / `npm run db:push` (server 워크스페이스) — Prisma 클라이언트 생성·스키마 반영.
+  서버 코드 수정 전 최초 1회 `db:generate` 필요. 로컬 DB는 `server/dev.db` (gitignore됨, `server/.env.example` 참고)
 
 ⚠️ **Node 버전**: 이 프로젝트의 `vite build`는 Windows의 Node 24.11.1에서 크래시한다
 (0xC0000409, 상세는 docs/PROGRESS.md 참고). **빌드는 Node 22 LTS로 실행할 것.**

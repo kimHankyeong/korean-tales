@@ -5,7 +5,7 @@
  * 개인 전송은 socket.id 개인 룸으로, 방 전체 전송은 방 코드 룸으로 나간다.
  */
 
-import type { Server } from 'socket.io';
+import type { Server, Socket } from 'socket.io';
 import {
   SOCKET_EVENTS,
   type ChatChannel,
@@ -14,7 +14,9 @@ import {
   type RoomSettingsPayload,
 } from '@korean-tales/shared';
 import { RoomManager } from '../rooms/roomManager';
-import type { RoomEmitter } from '../rooms/room';
+import type { JoiningPlayer, RoomEmitter } from '../rooms/room';
+import type { AuthService } from '../auth/service';
+import { identityOf, registerSocketAuth } from '../auth/socketAuth';
 
 type Ack = (response: { ok: boolean; error?: string; room?: unknown }) => void;
 
@@ -26,8 +28,36 @@ function makeEmitter(io: Server, roomCode: string): RoomEmitter {
   };
 }
 
-export function registerHandlers(io: Server, rng: () => number = Math.random): RoomManager {
+/**
+ * 방 입장 신원 결정 — 로그인 유저는 계정 닉네임이 게임 내 표시 이름(클라이언트가 보낸
+ * name 무시), 게스트는 보낸 이름을 정제해서 사용. 게스트 허용 여부는 requirements 9번 미정 —
+ * 차단으로 확정되면 socketAuth의 requireAuth로 연결 자체가 거부된다.
+ */
+function joiningPlayerOf(socket: Socket, providedName: unknown): JoiningPlayer {
+  const identity = identityOf(socket);
+  if (identity.kind === 'USER') {
+    return { id: socket.id, name: identity.nickname, accountId: identity.userId };
+  }
+  return { id: socket.id, name: sanitizeName(providedName) };
+}
+
+export interface RegisterHandlersOptions {
+  /** 지정하면 핸드셰이크에서 세션 쿠키를 검증해 소켓을 계정과 연결한다 */
+  auth?: AuthService;
+  /** 게스트 연결 거부 (기본 false — REQUIRE_AUTH 환경변수로 전환) */
+  requireAuth?: boolean;
+}
+
+export function registerHandlers(
+  io: Server,
+  rng: () => number = Math.random,
+  options: RegisterHandlersOptions = {},
+): RoomManager {
   const manager = new RoomManager((code) => makeEmitter(io, code), rng);
+
+  if (options.auth) {
+    registerSocketAuth(io, options.auth, { requireAuth: options.requireAuth });
+  }
 
   io.on('connection', (socket) => {
     const playerId = socket.id;
@@ -35,17 +65,13 @@ export function registerHandlers(io: Server, rng: () => number = Math.random): R
     /* ── 로비 ── */
 
     socket.on(SOCKET_EVENTS.roomCreate, (data: { name?: string }, ack?: Ack) => {
-      const name = sanitizeName(data?.name);
-      const room = manager.create({ id: playerId, name });
+      const room = manager.create(joiningPlayerOf(socket, data?.name));
       void socket.join(`room:${room.code}`);
       ack?.({ ok: true, room: room.toState() });
     });
 
     socket.on(SOCKET_EVENTS.roomJoin, (data: { code?: string; name?: string }, ack?: Ack) => {
-      const result = manager.join(String(data?.code ?? ''), {
-        id: playerId,
-        name: sanitizeName(data?.name),
-      });
+      const result = manager.join(String(data?.code ?? ''), joiningPlayerOf(socket, data?.name));
       if (typeof result === 'string') {
         ack?.({ ok: false, error: result });
         return;

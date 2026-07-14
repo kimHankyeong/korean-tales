@@ -2,7 +2,7 @@
  * RoomManager — 방 코드 발급·조회·정리, 플레이어의 소속 방 추적.
  */
 
-import { Room, type RoomEmitter } from './room';
+import { Room, type JoiningPlayer, type RoomEmitter } from './room';
 
 /** 혼동되기 쉬운 문자(0/O, 1/I)를 뺀 방 코드 문자셋 */
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -29,7 +29,7 @@ export class RoomManager {
     }
   }
 
-  create(host: { id: string; name: string }): Room {
+  create(host: JoiningPlayer): Room {
     this.leave(host.id); // 기존 방에서 제거
     const code = this.generateCode();
     const room = new Room(code, host, this.createEmitter(code), this.rng, this.now);
@@ -47,7 +47,7 @@ export class RoomManager {
     return code ? this.rooms.get(code) : undefined;
   }
 
-  join(code: string, player: { id: string; name: string }): Room | 'NOT_FOUND' | 'ROOM_FULL' | 'ALREADY_IN_GAME' {
+  join(code: string, player: JoiningPlayer): Room | 'NOT_FOUND' | 'ROOM_FULL' | 'ALREADY_IN_GAME' {
     const room = this.get(code);
     if (!room) return 'NOT_FOUND';
     this.leave(player.id);

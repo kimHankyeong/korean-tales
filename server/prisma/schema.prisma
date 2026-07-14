@@ -1,0 +1,39 @@
+// 계정 시스템 — requirements 11번 섹션
+// DB: 초기 SQLite + Prisma ORM (유저 증가 시 PostgreSQL로 전환 가능한 구조 —
+// provider만 교체하면 되도록 SQLite 전용 기능은 쓰지 않는다)
+//
+// DATABASE_URL 예시:
+//  - 로컬 개발:  file:./dev.db
+//  - Render 배포: file:/data/korean_tales.db  (영구 디스크 마운트 경로 — render.yaml 참고)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  /// argon2 해시 — 평문 비밀번호는 절대 저장하지 않는다
+  passwordHash    String
+  nickname        String    @unique
+  /// 프로필 사진 URL — 미설정 시 클라이언트가 기본 아바타 표시 (11번 마이페이지)
+  profileImageUrl String?
+  createdAt       DateTime  @default(now())
+  sessions        Session[]
+}
+
+/// httpOnly 세션 쿠키의 서버측 저장소 — 토큰은 불투명(opaque) 랜덤 값
+model Session {
+  token     String   @id
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+}

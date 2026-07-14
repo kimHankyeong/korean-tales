@@ -1,5 +1,24 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 8 완료: 계정 시스템 (2026-07-15)
+
+- **DB**: Prisma 6 + SQLite (requirements 11번 — PostgreSQL 전환 가능 구조, SQLite 전용 기능 미사용)
+  - `server/prisma/schema.prisma`: `User`(이메일·argon2 해시·닉네임 unique·프로필 URL·가입일) + `Session`(불투명 토큰, 30일 만료, cascade)
+  - **SQLite 경로는 `DATABASE_URL` 환경변수로 분리** — 로컬 `file:./dev.db`, Render `file:/data/korean_tales.db` (`server/.env.example`)
+  - 참고: Prisma 7은 드라이버 어댑터 필수라 v6으로 고정. `--force-reset`은 Prisma의 AI 가드에 걸리므로 테스트는 새 임시 파일 + 일반 `db push` 사용
+- **REST 인증** (Fastify — `server/src/app.ts`·`auth/routes.ts`): `POST /auth/signup`(가입 즉시 로그인)·`/auth/login`·`/auth/logout`·`GET /auth/me`
+  - httpOnly 세션 쿠키(`kt_session`, SameSite=Lax, prod에서 Secure), 계정 존재 여부를 응답으로 구분 불가하게 처리, `/health`(Render 헬스체크)
+- **Socket.io 핸드셰이크 인증** (`auth/socketAuth.ts`): REST와 같은 세션 쿠키 검증 → `socket.data.identity`(판별 유니온 `USER | GUEST`)
+  - **로그인 유저는 계정 닉네임이 게임 내 표시 이름으로 강제** (클라이언트가 보낸 name 무시), Room에 `accountId` 연결(추후 전적용)
+  - **게스트 분기 구조**: 허용 여부 미정(9번) — 현재 기본 허용, `REQUIRE_AUTH=true`면 미인증 연결 거부 (분기 지점은 socketAuth 한 곳)
+- **배포**: `render.yaml` 블루프린트 초안 (웹 서비스 + 영구 디스크 /data 1GB) — ⚠️ **Render 무료 플랜은 영구 디스크 미지원**(디스크 쓰려면 starter 이상, 주석 명기). `start:deploy`(db push 후 기동)·`NODE_VERSION=22.23.1` 고정
+- 검증: 서버 테스트 **121개**(auth 서비스/REST 8 + 핸드셰이크 통합 3 신규 — 실제 임시 SQLite로 검증), 전체 **154개** 통과, 서버 기동 + `/health` 200 스모크 확인
+
+### 세션 8 미결/후속
+- 마이페이지(닉네임 변경·프로필 사진 업로드 256×256, 11번 후반) 미구현
+- 게스트 허용 여부(9번) 확정 필요 — 현재 허용
+- Render 무료 플랜 배포 시 디스크 없음 → 계정 데이터 휘발 (starter 전환 또는 감수 결정 필요)
+
 ## 세션 7 완료: 승리 판정·게임 종료 플로우 (2026-07-14)
 
 - **승리 조건 체크 경로 확인·보강** (requirements 8번 — 일차 제한 없음):

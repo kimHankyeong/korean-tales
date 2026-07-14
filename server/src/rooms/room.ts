@@ -41,6 +41,15 @@ export interface RoomPlayer {
   id: string;
   name: string;
   factionPreference: Faction | null;
+  /** 로그인 유저의 계정 id — 게스트는 없음 (추후 전적/마이페이지 연동용) */
+  accountId?: string;
+}
+
+/** 방 생성/입장 시 신원 — name은 로그인 유저면 계정 닉네임 (registerHandlers에서 결정) */
+export interface JoiningPlayer {
+  id: string;
+  name: string;
+  accountId?: string;
 }
 
 export type RoomError =
@@ -82,7 +91,7 @@ export class Room {
 
   constructor(
     code: string,
-    host: { id: string; name: string },
+    host: JoiningPlayer,
     private readonly emitter: RoomEmitter,
     private readonly rng: () => number = Math.random,
     private readonly now: () => number = Date.now,
@@ -90,7 +99,12 @@ export class Room {
     this.code = code;
     this.hostId = host.id;
     this.settings = { mode: 9, ...DEFAULT_ROOM_TIMER_SETTINGS };
-    this.players.push({ id: host.id, name: host.name, factionPreference: null });
+    this.players.push({
+      id: host.id,
+      name: host.name,
+      factionPreference: null,
+      accountId: host.accountId,
+    });
   }
 
   get inGame(): boolean {
@@ -113,11 +127,16 @@ export class Room {
 
   /* ── 로비 ─────────────────────────────────────── */
 
-  join(player: { id: string; name: string }): RoomError | null {
+  join(player: JoiningPlayer): RoomError | null {
     if (this.inGame) return 'ALREADY_IN_GAME';
     if (this.players.length >= this.settings.mode) return 'ROOM_FULL';
     if (!this.players.some((p) => p.id === player.id)) {
-      this.players.push({ id: player.id, name: player.name, factionPreference: null });
+      this.players.push({
+        id: player.id,
+        name: player.name,
+        factionPreference: null,
+        accountId: player.accountId,
+      });
     }
     this.broadcastRoomState();
     return null;
