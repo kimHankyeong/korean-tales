@@ -7,16 +7,37 @@
  */
 
 import { useState } from 'react';
+import { CHARACTERS, type GameOverPayload } from '@korean-tales/shared';
 import { ChatWindow } from './components/ChatWindow';
+import { GameOverScreen } from './components/GameOverScreen';
 import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
 import { useGameStore } from './store/gameStore';
 
 type PanelKind = 'NONE' | 'VOTE' | 'SKILL' | 'SKILL_FORGO';
 
+/** 종료 화면 데모용 목 결과 — 선 승리, 악 전멸, 생존 중립 합류 */
+function mockGameOver(players: { id: string; alive: boolean }[]): GameOverPayload {
+  return {
+    winner: 'GOOD',
+    roles: players.map((p, i) => {
+      const character = CHARACTERS[i % CHARACTERS.length]!;
+      const alive = character.faction !== 'EVIL' && p.alive;
+      return {
+        playerId: p.id,
+        characterId: character.id,
+        faction: character.faction,
+        alive,
+        isWinner: character.faction === 'GOOD' || (character.faction === 'NEUTRAL' && alive),
+      };
+    }),
+  };
+}
+
 export default function App() {
   const store = useGameStore();
   const [panel, setPanel] = useState<PanelKind>('NONE');
   const [nextSeat, setNextSeat] = useState(1);
+  const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
 
   function confirmSelection(target: SelectionTarget) {
     const label =
@@ -98,6 +119,11 @@ export default function App() {
         >
           {store.condemnedId === store.myId ? '변론 모드 해제' : '내가 처형 대상일 때 (입력 가능)'}
         </button>
+
+        <p className="mt-1 text-xs text-slate-400">게임 종료</p>
+        <button className={controlButton} onClick={() => setGameOver(mockGameOver(store.players))}>
+          종료 화면 보기 (선 승리 · 역할 공개)
+        </button>
       </aside>
 
       {/* 공용 선택 패널 — 화면 중앙 1/6 크기 */}
@@ -119,6 +145,22 @@ export default function App() {
           onConfirm={confirmSelection}
         />
       )}
+      {/* 게임 종료 화면 — 승리 진영·역할 전체 공개·다시하기/로비로 */}
+      {gameOver && (
+        <GameOverScreen
+          result={gameOver}
+          players={store.players}
+          onRestart={() => {
+            setGameOver(null);
+            store.addSystemMessage('[데모] 다시하기 — 새 게임 준비 (소켓 연동 시 room:start 재요청)');
+          }}
+          onGoLobby={() => {
+            setGameOver(null);
+            store.addSystemMessage('[데모] 로비로 이동 (소켓 연동 시 로비 화면 전환)');
+          }}
+        />
+      )}
+
       {panel === 'SKILL_FORGO' && (
         <SelectionPanel
           title="피 맺힌 유서 — 함께 데려갈 사람"

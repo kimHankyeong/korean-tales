@@ -26,7 +26,7 @@ import {
 } from '@korean-tales/shared';
 import { isActionAllowed } from '../game/actionAuth';
 import { assignCharacters } from '../game/assign';
-import { buildRoleReveal, phasePath, toPublicGameState } from '../game/publicState';
+import { buildGameResult, phasePath, toPublicGameState } from '../game/publicState';
 import { GameSession, type GameSnapshot } from '../game/session';
 import { PhaseTimer } from '../game/timer';
 import type { GamePlayer, InvestigationRecord } from '../game/types';
@@ -231,13 +231,13 @@ export class Room {
 
     this.broadcastPublicState(snapshot);
 
-    // 게임 종료 — 이때만 역할 전체 공개
+    // 게임 종료 — 이때만 역할 전체 공개 + 개인별 승패 귀속 (중립은 생존 시 승리 팀 합류)
     if (snapshot.status === 'done' && snapshot.context.winner) {
       this.cancelSurrender('COMPLETED_GAME');
-      const payload: GameOverPayload = {
-        winner: snapshot.context.winner,
-        roles: buildRoleReveal(snapshot.context.players),
-      };
+      const payload: GameOverPayload = buildGameResult(
+        snapshot.context.players,
+        snapshot.context.winner,
+      );
       this.emitter.toRoom(SOCKET_EVENTS.gameOver, payload);
       this.endSession();
     }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createActor } from 'xstate';
 import { CHARACTERS } from '@korean-tales/shared';
 import { gameMachine } from './machine';
-import { buildRoleReveal, phasePath, toPublicGameState } from './publicState';
+import { buildGameResult, phasePath, toPublicGameState } from './publicState';
 import type { GamePlayer } from './types';
 
 function makePlayers(): GamePlayer[] {
@@ -64,9 +64,46 @@ describe('공개 게임 상태 (정보 은닉의 단일 관문)', () => {
     expect(state.winner).toBeNull();
   });
 
-  it('역할 전체 공개는 buildRoleReveal(게임 종료 전용)에서만 만들어진다', () => {
-    const roles = buildRoleReveal(makePlayers());
+  it('승패 귀속: 승리 진영 소속은 사망해도 승자, 중립은 생존 시에만 승리 팀 합류', () => {
+    // 선 승리 — 악 전멸, 선 일부 사망, 중립(바리공주 p9) 생존
+    const players = makePlayers().map((p) => {
+      if (p.faction === 'EVIL') return { ...p, alive: false };
+      if (p.id === 'p5') return { ...p, alive: false }; // 사망한 선 진영
+      return p;
+    });
+    const result = buildGameResult(players, 'GOOD');
+    const byId = Object.fromEntries(result.roles.map((r) => [r.playerId, r]));
+    expect(byId.p5!.isWinner).toBe(true); // 사망한 선 진영도 승자
+    expect(byId.p1!.isWinner).toBe(false); // 악 진영 패배
+    expect(byId.p9!.isWinner).toBe(true); // 생존 중립 → 승리 팀 합류 (8번 섹션 확정)
+  });
+
+  it('사망한 중립은 승리 팀에 합류하지 않는다 (⚠️ 문서 미확정 — 가정)', () => {
+    const players = makePlayers().map((p) =>
+      p.faction === 'EVIL' || p.faction === 'NEUTRAL' ? { ...p, alive: false } : p,
+    );
+    const result = buildGameResult(players, 'GOOD');
+    expect(result.roles.find((r) => r.playerId === 'p9')!.isWinner).toBe(false);
+  });
+
+  it('악 승리 시에도 생존 중립은 승리 팀에 합류한다 (⚠️ 문서 미확정 — 동일 규칙 가정)', () => {
+    const players = makePlayers().map((p) => (p.faction === 'GOOD' ? { ...p, alive: false } : p));
+    const result = buildGameResult(players, 'EVIL');
+    const byId = Object.fromEntries(result.roles.map((r) => [r.playerId, r]));
+    expect(byId.p1!.isWinner).toBe(true); // 악 승자
+    expect(byId.p9!.isWinner).toBe(true); // 생존 중립 합류
+    expect(byId.p4!.isWinner).toBe(false); // 선 패배
+  });
+
+  it('역할 전체 공개는 buildGameResult(게임 종료 전용)에서만 만들어진다', () => {
+    const { roles } = buildGameResult(makePlayers(), 'GOOD');
     expect(roles).toHaveLength(9);
-    expect(roles[0]).toEqual({ playerId: 'p1', characterId: 'jeoseung', faction: 'EVIL' });
+    expect(roles[0]).toEqual({
+      playerId: 'p1',
+      characterId: 'jeoseung',
+      faction: 'EVIL',
+      alive: true,
+      isWinner: false,
+    });
   });
 });

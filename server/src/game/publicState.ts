@@ -3,10 +3,10 @@
  *
  * 방 전체에 브로드캐스트되는 것은 이 파일이 만드는 PublicGameState뿐이다.
  * 캐릭터/진영, 밤 행동(악 투표·킬 대상·장난·유혹·길동무), 투사 결과, 개별 투표 내역은
- * 절대 포함하지 않는다. 역할 전체 공개는 게임 종료 payload(buildRoleReveal)에서만.
+ * 절대 포함하지 않는다. 역할 전체 공개는 게임 종료 payload(buildGameResult)에서만.
  */
 
-import type { GameOverPayload, PublicGameState } from '@korean-tales/shared';
+import type { Faction, GameOverPayload, PublicGameState } from '@korean-tales/shared';
 import type { GameSnapshot } from './session';
 import type { GamePlayer } from './types';
 
@@ -45,11 +45,27 @@ export function toPublicGameState(
   };
 }
 
-/** 게임 종료 시에만 호출 — 역할 전체 공개 */
-export function buildRoleReveal(players: readonly GamePlayer[]): GameOverPayload['roles'] {
-  return players.map((p) => ({
-    playerId: p.id,
-    characterId: p.characterId,
-    faction: p.faction,
-  }));
+/**
+ * 게임 종료 결과 — 역할 전체 공개 + 개인별 승패 귀속 (requirements 8번).
+ *
+ * 귀속 규칙:
+ * - 승리 진영 소속이면 (생존 여부와 무관하게) 승자로 처리
+ * - 중립(바리공주·전향한 까치선비)은 "생존 시 승리 팀에 합류":
+ *   · 선 승리 시 생존 중립 합류는 requirements 8번에 확정
+ *   · ⚠️ 악 승리 시 중립 합류, 사망한 중립의 귀속(비승자 처리)은 문서 미확정 — 같은 규칙으로 가정
+ */
+export function buildGameResult(
+  players: readonly GamePlayer[],
+  winner: Faction,
+): GameOverPayload {
+  return {
+    winner,
+    roles: players.map((p) => ({
+      playerId: p.id,
+      characterId: p.characterId,
+      faction: p.faction,
+      alive: p.alive,
+      isWinner: p.faction === winner || (p.faction === 'NEUTRAL' && p.alive),
+    })),
+  };
 }

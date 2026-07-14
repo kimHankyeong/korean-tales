@@ -1,5 +1,16 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 7 완료: 승리 판정·게임 종료 플로우 (2026-07-14)
+
+- **승리 조건 체크 경로 확인·보강** (requirements 8번 — 일차 제한 없음):
+  - 매 사망 처리 후: `resolveDeaths` 큐 소진 시 `checkWin` (세션 2 구현) — **유서 연쇄로 마지막 악이 죽는 경우**도 즉시 종료됨을 머신 테스트로 검증
+  - 투항 완료 시: Room 30초 팀 동의 → `TEAM_SURRENDER` → 상대 진영 승리 (세션 5 구현) — 머신 레벨 테스트 추가
+- **개인별 승패 귀속** — `buildGameResult(players, winner)` (`publicState.ts`), `GameOverPayload.roles`에 `alive`·`isWinner` 추가:
+  - 승리 진영 소속은 사망해도 승자
+  - **중립은 생존 시 승리 팀에 합류** — 선 승리 시는 8번 섹션 확정, ⚠️ **악 승리 시 합류·사망 중립의 비승자 처리는 문서 미확정(동일 규칙 가정, 코드 주석 표기)**
+- **게임 종료 화면** (`client/src/components/GameOverScreen.tsx`): 승리 진영 배너(진영 색), 전체 플레이어 캐릭터 공개 그리드(번호·이름·캐릭터·진영·사망 표기·승리 뱃지, stagger 애니메이션), **다시하기/로비로** 버튼(콜백 — 소켓 연동 시 room:start/로비 전환에 배선). 데모 App에서 목 결과로 확인 가능
+- 검증: 테스트 **143개**(shared 14·server 110·client 19) 통과, typecheck·프로덕션 빌드 성공
+
 ## 세션 6 완료: 클라이언트 핵심 공용 UI (2026-07-14)
 
 - `client/src/components/` — 서버 목(mock) 데이터로 독립 동작하는 공용 UI 3종 (requirements 6번)
@@ -104,9 +115,11 @@
 - npm workspaces 모노레포(client/server/shared), 기술 스택 세팅, CLAUDE.md, docs/requirements.md 배치
 - 게임 규칙 상수 `gameConfig.ts` 분리, 서버는 Socket.io 연결 스켈레톤만 존재
 
-## 다음 세션 할 일 (세션 7)
+## 다음 세션 할 일 (세션 8)
 
 - **소켓 연동 실화면**: 로비 화면(방 생성/입장·설정·진영 선호) + 게임 화면 조립
   - socket.io-client 연결 훅 — `SOCKET_EVENTS` 수신을 gameStore 액션에 배선 (목 → 실데이터 교체)
   - 서버 `PublicGameState`/`timerSync`를 ChatWindow·SelectionPanel에 연결, `gameAction` 발신
+  - `game:over` 수신 → GameOverScreen 표시, 다시하기(room:start 재요청)/로비로 배선
 - 이후: 6번 섹션 부속 UI(메모장·스킬북 모달·플레이어 목록 패널·투항 버튼·P버튼 — P버튼은 머신 이벤트 추가 필요) → 9인 풀 시뮬레이션 테스트(10번 9단계)
+- ⚠️ 확인 필요: 악 승리 시 생존 중립의 승리 합류 여부, 사망 중립의 귀속 (현재 "생존 시 승리 팀 합류"로 가정 — requirements 8번에 확정 시 반영)

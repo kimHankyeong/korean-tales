@@ -138,10 +138,25 @@ export interface InvestigationPayload {
   result: InvestigationResult;
 }
 
-/** 게임 종료 시에만 역할 전체 공개 */
+/** 게임 종료 시에만 역할 전체 공개 + 개인별 승패 귀속 */
+export interface PlayerGameResult {
+  playerId: string;
+  characterId: CharacterId;
+  faction: Faction;
+  /** 종료 시점 생존 여부 */
+  alive: boolean;
+  /**
+   * 승패 귀속 — 승리 진영 소속이면 승자.
+   * 중립(바리공주·전향 까치선비)은 "생존 시 승리 팀에 합류":
+   * 선 승리 시 생존 중립 합류는 requirements 8번에 확정,
+   * ⚠️ 악 승리 시 중립 합류·사망 중립의 귀속은 문서 미확정 — 동일 규칙으로 가정
+   */
+  isWinner: boolean;
+}
+
 export interface GameOverPayload {
   winner: Faction;
-  roles: { playerId: string; characterId: CharacterId; faction: Faction }[];
+  roles: PlayerGameResult[];
 }
 
 /* ── 채팅 ── */

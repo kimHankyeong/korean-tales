@@ -485,6 +485,35 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
 });
 
 describe('승리 판정 (requirements 8번)', () => {
+  it('팀 전원 투항(TEAM_SURRENDER) 시 어느 상태에서든 즉시 상대 진영 승리', () => {
+    const actor = startGame();
+    skipElection(actor); // 첫날 낮 개인 발언 중
+    actor.send({ type: 'TEAM_SURRENDER', faction: 'GOOD' }); // 선 전원 항복
+    const snap = actor.getSnapshot();
+    expect(snap.status).toBe('done');
+    expect(snap.context.winner).toBe('EVIL'); // 상대 승리 — 일차 무관
+  });
+
+  it('사망 트리거 연쇄(피 맺힌 유서)로 마지막 악이 죽어도 즉시 승리 판정된다', () => {
+    // 악 진영 중 p1(저승사자)만 생존한 상태로 시작
+    const players = makePlayers().map((p) =>
+      p.id === 'p2' || p.id === 'p3' ? { ...p, alive: false } : p,
+    );
+    const actor = createActor(gameMachine, { input: { players, rng: () => 0 } });
+    actor.start();
+    timeUp(actor); // 선출 스킵
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    // 장화홍련(p7) 처형 → 유서로 마지막 악 p1 지목
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p7'), 'p7');
+    timeUp(actor); // → 변론
+    timeUp(actor); // → 처형 → 유서 대기
+    actor.send({ type: 'GRUDGE_TARGET', targetId: 'p1' }); // 연쇄 사망 → 악 전멸
+    const snap = actor.getSnapshot();
+    expect(snap.status).toBe('done');
+    expect(snap.context.winner).toBe('GOOD');
+  });
+
   it('악 진영 전원 탈락 시 즉시 게임 종료 — 선 진영 승리', () => {
     const actor = startGame();
     skipElection(actor);
