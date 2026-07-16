@@ -15,11 +15,12 @@ describe('직업 설명(스킬북) 모달 (requirements 6번)', () => {
     expect(screen.queryByText('수살귀')).toBeNull(); // 레거시 캐릭터 미노출
   });
 
-  it('캐릭터 일러스트 사진이 표시된다 (깡철이는 미제작 — 이니셜 대체)', () => {
+  it('9개 캐릭터 전원의 일러스트 사진이 표시된다', () => {
     render(<SkillBookModal onClose={() => {}} />);
     const images = screen.getAllByRole('img');
-    expect(images.length).toBe(8); // 9종 중 깡철이만 일러스트 없음
+    expect(images.length).toBe(9);
     expect(screen.getByAltText('저승사자 일러스트')).toBeTruthy();
+    expect(screen.getByAltText('깡철이 일러스트')).toBeTruthy();
     expect(screen.getByAltText('구미호 일러스트')).toBeTruthy();
   });
 
