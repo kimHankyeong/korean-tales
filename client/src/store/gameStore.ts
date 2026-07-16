@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import type { PublicPlayerState } from '@korean-tales/shared';
 import type { ChatMessageView } from '../components/ChatWindow';
 import type { CountdownTarget } from '../components/CountdownText';
+import { applyBgmVolume, loadBgmVolume } from '../lib/bgm';
 import { formatSpeechOrderLabel, type PhaseKind } from '../lib/format';
 
 let nextMessageId = 1;
@@ -24,6 +25,8 @@ export interface GameUiState {
   personalSpeechSeconds: number;
   /** 내 계정 프로필 (마이페이지) — 소켓 연동 시 /auth/me 결과로 대체 */
   myProfile: { nickname: string; profileImageUrl: string | null };
+  /** 배경음악 음량 (0~1) — localStorage에 유지 */
+  bgmVolume: number;
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -36,6 +39,8 @@ export interface GameUiState {
   setMyNickname(nickname: string): void;
   /** 마이페이지: 프로필 사진 변경 — 게임 내 프로필 표시에도 반영 */
   setMyAvatarUrl(url: string | null): void;
+  /** 마이페이지: 배경음악 음량 조절 (0~1) — 즉시 반영 + 저장 */
+  setBgmVolume(volume: number): void;
 }
 
 /** 목 데이터 — 9인 방 가정 */
@@ -59,6 +64,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   timer: null,
   personalSpeechSeconds: 80,
   myProfile: { nickname: '달래', profileImageUrl: null },
+  bgmVolume: loadBgmVolume(),
 
   setPhase: (phase) => {
     set({ phase });
@@ -108,4 +114,9 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       myProfile: { ...state.myProfile, profileImageUrl: url },
       players: state.players.map((p) => (p.id === state.myId ? { ...p, avatarUrl: url } : p)),
     })),
+
+  setBgmVolume: (volume) => {
+    applyBgmVolume(volume); // 재생 중 즉시 반영 + localStorage 저장
+    set({ bgmVolume: volume });
+  },
 }));

@@ -6,7 +6,7 @@
  * 우측: 데모 제어판 — 투표 창/스킬 창/포기 포함 스킬 창 열기, 페이즈 전환 등
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CHARACTERS, type GameOverPayload } from '@korean-tales/shared';
 import { ChatWindow } from './components/ChatWindow';
 import { GameOverScreen } from './components/GameOverScreen';
@@ -15,6 +15,7 @@ import { PlayerListPanel } from './components/PlayerListPanel';
 import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
 import { ServerWakeNotice } from './components/ServerWakeNotice';
 import { SkillBookModal } from './components/SkillBookModal';
+import { initBgm } from './lib/bgm';
 import { useGameStore } from './store/gameStore';
 
 type PanelKind = 'NONE' | 'VOTE' | 'SKILL' | 'SKILL_FORGO';
@@ -44,6 +45,9 @@ export default function App() {
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [showMyPage, setShowMyPage] = useState(false);
   const [showSkillBook, setShowSkillBook] = useState(false);
+
+  // BGM(시칠리안느) 시작 — 자동재생이 막히면 첫 클릭에서 재생된다
+  useEffect(() => initBgm(useGameStore.getState().bgmVolume), []);
 
   function confirmSelection(target: SelectionTarget) {
     const label =
@@ -185,6 +189,8 @@ export default function App() {
             store.setMyAvatarUrl(URL.createObjectURL(blob)); // 데모: 로컬 미리보기 URL
             return null;
           }}
+          bgmVolume={store.bgmVolume}
+          onChangeBgmVolume={store.setBgmVolume}
           onClose={() => setShowMyPage(false)}
         />
       )}

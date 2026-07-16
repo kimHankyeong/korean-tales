@@ -16,6 +16,9 @@ dist/
 *.db
 *.db-journal
 
+# 음원 원본 (루트) — 사용본은 client/src/assets/audio/에 커밋됨
+/*.mp3
+
 # 아바타 업로드 (로컬 개발 산출물 — 경로는 UPLOADS_DIR로 주입)
 uploads/
 

@@ -20,10 +20,20 @@ export interface MyPageProps {
   onChangeNickname: (nickname: string) => Promise<string | null>;
   /** 크롭·리사이즈된 Blob 업로드 — 실패 시 에러 메시지 반환 */
   onUploadAvatar: (blob: Blob) => Promise<string | null>;
+  /** 배경음악 음량 (0~1) */
+  bgmVolume: number;
+  onChangeBgmVolume: (volume: number) => void;
   onClose: () => void;
 }
 
-export function MyPage({ user, onChangeNickname, onUploadAvatar, onClose }: MyPageProps) {
+export function MyPage({
+  user,
+  onChangeNickname,
+  onUploadAvatar,
+  bgmVolume,
+  onChangeBgmVolume,
+  onClose,
+}: MyPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [nickname, setNickname] = useState(user.nickname);
   const [message, setMessage] = useState<string | null>(null);
@@ -103,6 +113,24 @@ export function MyPage({ user, onChangeNickname, onUploadAvatar, onClose }: MyPa
             저장
           </button>
         </div>
+
+        {/* 배경음악 음량 — 시칠리안느 BGM, 즉시 반영·저장 */}
+        <label className="flex w-full items-center gap-2 text-xs text-slate-300">
+          <span className="shrink-0">배경음악</span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={Math.round(bgmVolume * 100)}
+            onChange={(e) => onChangeBgmVolume(Number(e.target.value) / 100)}
+            aria-label="배경음악 음량"
+            className="min-w-0 flex-1"
+          />
+          <span className="w-9 shrink-0 text-right tabular-nums">
+            {Math.round(bgmVolume * 100)}%
+          </span>
+        </label>
 
         {message && (
           <p role="status" className="text-center text-xs text-amber-200">

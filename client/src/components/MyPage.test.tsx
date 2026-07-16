@@ -15,16 +15,19 @@ beforeAll(() => {
 function renderMyPage(profileImageUrl: string | null = null) {
   const onChangeNickname = vi.fn(async () => null);
   const onUploadAvatar = vi.fn(async () => null);
+  const onChangeBgmVolume = vi.fn();
   const onClose = vi.fn();
   render(
     <MyPage
       user={{ nickname: '달래', profileImageUrl }}
       onChangeNickname={onChangeNickname}
       onUploadAvatar={onUploadAvatar}
+      bgmVolume={0.4}
+      onChangeBgmVolume={onChangeBgmVolume}
       onClose={onClose}
     />,
   );
-  return { onChangeNickname, onUploadAvatar, onClose };
+  return { onChangeNickname, onUploadAvatar, onChangeBgmVolume, onClose };
 }
 
 function selectFile(file: File) {
@@ -51,6 +54,15 @@ describe('마이페이지 (requirements 11번)', () => {
     fireEvent.click(screen.getByRole('button', { name: '저장' }));
     await waitFor(() => expect(onChangeNickname).toHaveBeenCalledWith('새달래'));
     expect((await screen.findByRole('status')).textContent).toContain('변경했어요');
+  });
+
+  it('배경음악 음량 슬라이더: 현재 값 표시 + 조절 시 0~1 값으로 콜백 호출', () => {
+    const { onChangeBgmVolume } = renderMyPage();
+    const slider = screen.getByLabelText('배경음악 음량') as HTMLInputElement;
+    expect(slider.value).toBe('40'); // bgmVolume 0.4 → 40%
+    expect(screen.getByText('40%')).toBeTruthy();
+    fireEvent.change(slider, { target: { value: '75' } });
+    expect(onChangeBgmVolume).toHaveBeenCalledWith(0.75);
   });
 
   it('허용되지 않는 형식·2MB 초과 파일은 크롭 없이 즉시 에러를 보여준다', () => {
