@@ -1,5 +1,27 @@
 # 진행 기록 (PROGRESS)
 
+## 세션 11 완료: 마이페이지 + 프로필 사진 업로드 (2026-07-16)
+
+- **서버** (requirements 11번 마이페이지):
+  - `PATCH /profile/nickname` — 가입과 같은 규칙(2~12자·중복 불가)으로 닉네임 변경
+  - `POST /profile/avatar` — raw 이미지 바디 업로드. **서버측 재검증**: Content-Type이 아닌 파일 시그니처(매직 바이트)로 jpg/png/webp 판별, 2MB 초과 413, 위조 바이트 400
+  - 저장: `UPLOADS_DIR/avatars/<userId>.<ext>` (형식 변경 시 이전 확장자 정리) + `GET /uploads/avatars/:file` 정적 서빙(경로 조작 차단, 캐시 헤더) — 저장·서빙이 profile/routes.ts에 격리되어 추후 S3류 이관 용이
+  - `UPLOADS_DIR` 환경변수 분리 — Render는 영구 디스크 하위 `/data/uploads` (render.yaml·.env.example 갱신)
+- **아바타 전파**: 소켓 신원(USER)의 profileImageUrl → Room(RoomPlayer.avatarUrl) → `RoomPlayerInfo`·`PublicPlayerState.avatarUrl` (shared 계약 확장) — 로비·게임 공개 상태에 포함
+- **클라이언트**:
+  - `MyPage` — 현재 프로필 사진·닉네임 표시/변경, `<input type="file" accept="image/*">`(모바일 갤러리), 클라측 형식·용량 검증(`validateAvatarFile`)
+  - `AvatarCropModal` — 정사각형 크롭 UI(드래그 이동 + 확대 슬라이더) → canvas로 **256×256** webp 변환(`computeCropRect`·`cropToBlob` 순수 함수 분리)
+  - `Avatar` 공용 컴포넌트 — 사진 없으면 기본 아바타(이니셜). **플레이어 목록 패널(신설)·투표/스킬 선택창·채팅 발신자 표시가 계정 프로필 사진 사용**
+  - `lib/api.ts` — credentials 포함 REST 클라이언트(fetchMe/updateNickname/uploadAvatar, 상대 URL 해석)
+  - 데모 App: 마이페이지 토글(목 저장 — 소켓 연동 시 lib/api로 교체), 플레이어 목록 패널 장착
+- 검증: 테스트 **176개**(shared 14·server 129·client 33) 통과, typecheck·빌드 성공
+- 참고: jsdom에 URL.createObjectURL이 없어 MyPage 테스트는 파일 수준 폴리필 사용
+
+### 세션 11 미결/후속
+- 실서버 연동 화면에서 MyPage를 lib/api에 배선 (현재 데모는 목 저장)
+- 게임 중 프로필 변경은 다음 방 입장부터 반영 (소켓 신원은 핸드셰이크 시점 고정)
+- (추후) 부적절 이미지 신고 기능 — 정식 서비스 전 필요 (11번 명기)
+
 ## 세션 9 완료: Render 배포 설정 정리 (2026-07-15)
 
 - **render.yaml 보완**: `CLIENT_ORIGIN`(CORS 제한)·`COOKIE_SECRET`(generateValue 자동 생성) 환경변수 추가, 디스크/무료 플랜 주의사항·README 참조 주석 정리

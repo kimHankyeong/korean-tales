@@ -16,6 +16,9 @@ dist/
 *.db
 *.db-journal
 
+# 아바타 업로드 (로컬 개발 산출물 — 경로는 UPLOADS_DIR로 주입)
+uploads/
+
 # misc
 .DS_Store
 .env

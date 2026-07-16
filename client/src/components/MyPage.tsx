@@ -1,0 +1,131 @@
+/**
+ * 마이페이지 — requirements 11번:
+ * 현재 프로필 사진·닉네임 표시 및 변경, 프로필 사진 업로드(기기 파일 선택 → 크롭 → 전송).
+ * 서버 호출은 콜백으로 주입받아 데모(목)와 실서버 연동 양쪽에서 동작한다.
+ */
+
+import { useRef, useState } from 'react';
+import { AVATAR_ERROR_MESSAGES, validateAvatarFile } from '../lib/avatarUpload';
+import { Avatar } from './Avatar';
+import { AvatarCropModal } from './AvatarCropModal';
+
+export interface MyPageUser {
+  nickname: string;
+  profileImageUrl: string | null;
+}
+
+export interface MyPageProps {
+  user: MyPageUser;
+  /** 닉네임 저장 — 실패 시 에러 메시지 반환, 성공 시 null */
+  onChangeNickname: (nickname: string) => Promise<string | null>;
+  /** 크롭·리사이즈된 Blob 업로드 — 실패 시 에러 메시지 반환 */
+  onUploadAvatar: (blob: Blob) => Promise<string | null>;
+  onClose: () => void;
+}
+
+export function MyPage({ user, onChangeNickname, onUploadAvatar, onClose }: MyPageProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [nickname, setNickname] = useState(user.nickname);
+  const [message, setMessage] = useState<string | null>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function onFileSelected(file: File | undefined) {
+    if (!file) return;
+    // 클라이언트측 형식·용량 검증 (서버에서도 재검증)
+    const error = validateAvatarFile(file);
+    if (error) {
+      setMessage(AVATAR_ERROR_MESSAGES[error]);
+      return;
+    }
+    setMessage(null);
+    setCropFile(file);
+  }
+
+  async function saveNickname() {
+    setBusy(true);
+    const error = await onChangeNickname(nickname.trim());
+    setBusy(false);
+    setMessage(error ?? '닉네임을 변경했어요.');
+  }
+
+  async function confirmCrop(blob: Blob) {
+    setCropFile(null);
+    setBusy(true);
+    const error = await onUploadAvatar(blob);
+    setBusy(false);
+    setMessage(error ?? '프로필 사진을 변경했어요.');
+  }
+
+  return (
+    <div className="fixed inset-0 z-[65] grid place-items-center bg-black/60 p-4" role="dialog" aria-label="마이페이지">
+      <section className="flex w-full max-w-sm flex-col items-center gap-4 rounded-xl border border-slate-600 bg-slate-900 p-6">
+        <h1 className="text-base font-bold text-amber-300">마이페이지</h1>
+
+        {/* 현재 프로필 사진 — 미설정 시 기본 아바타 */}
+        <Avatar name={user.nickname} url={user.profileImageUrl} size={96} />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+        >
+          사진 변경
+        </button>
+        {/* 기기 파일 접근 — 모바일에서는 갤러리/카메라 (11번: accept="image/*") */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          aria-label="프로필 사진 선택"
+          onChange={(e) => {
+            onFileSelected(e.target.files?.[0]);
+            e.target.value = ''; // 같은 파일 재선택 허용
+          }}
+        />
+
+        {/* 닉네임 변경 */}
+        <div className="flex w-full gap-2">
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
+            maxLength={12}
+            aria-label="닉네임"
+            className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100"
+          />
+          <button
+            type="button"
+            disabled={busy || nickname.trim().length === 0 || nickname.trim() === user.nickname}
+            onClick={() => void saveNickname()}
+            className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+          >
+            저장
+          </button>
+        </div>
+
+        {message && (
+          <p role="status" className="text-center text-xs text-amber-200">
+            {message}
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs text-slate-400 underline hover:text-slate-200"
+        >
+          닫기
+        </button>
+      </section>
+
+      {cropFile && (
+        <AvatarCropModal
+          file={cropFile}
+          onCancel={() => setCropFile(null)}
+          onConfirm={(blob) => void confirmCrop(blob)}
+        />
+      )}
+    </div>
+  );
+}

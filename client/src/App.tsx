@@ -10,6 +10,8 @@ import { useState } from 'react';
 import { CHARACTERS, type GameOverPayload } from '@korean-tales/shared';
 import { ChatWindow } from './components/ChatWindow';
 import { GameOverScreen } from './components/GameOverScreen';
+import { MyPage } from './components/MyPage';
+import { PlayerListPanel } from './components/PlayerListPanel';
 import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
 import { ServerWakeNotice } from './components/ServerWakeNotice';
 import { useGameStore } from './store/gameStore';
@@ -39,6 +41,7 @@ export default function App() {
   const [panel, setPanel] = useState<PanelKind>('NONE');
   const [nextSeat, setNextSeat] = useState(1);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
+  const [showMyPage, setShowMyPage] = useState(false);
 
   function confirmSelection(target: SelectionTarget) {
     const label =
@@ -70,9 +73,17 @@ export default function App() {
         />
       </div>
 
+      {/* 플레이어 목록 패널 — 프로필 + 배정 번호 (6번 섹션, 계정 프로필 사진 연동) */}
+      <PlayerListPanel players={store.players} />
+
       {/* 데모 제어판 */}
       <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-64">
         <h1 className="text-sm font-bold text-amber-300">korean_tales — 공용 UI 데모</h1>
+
+        <p className="mt-1 text-xs text-slate-400">계정</p>
+        <button className={controlButton} onClick={() => setShowMyPage(true)}>
+          마이페이지 열기 (닉네임 · 프로필 사진)
+        </button>
 
         <p className="mt-1 text-xs text-slate-400">페이즈</p>
         <button className={controlButton} onClick={() => store.setPhase(store.phase === 'DAY' ? 'NIGHT' : 'DAY')}>
@@ -149,6 +160,23 @@ export default function App() {
           onConfirm={confirmSelection}
         />
       )}
+      {/* 마이페이지 — 데모에서는 목 저장 (소켓 연동 시 lib/api의 updateNickname/uploadAvatar로 교체) */}
+      {showMyPage && (
+        <MyPage
+          user={store.myProfile}
+          onChangeNickname={async (nickname) => {
+            if (nickname.length < 2) return '닉네임은 2자 이상이어야 해요.';
+            store.setMyNickname(nickname);
+            return null;
+          }}
+          onUploadAvatar={async (blob) => {
+            store.setMyAvatarUrl(URL.createObjectURL(blob)); // 데모: 로컬 미리보기 URL
+            return null;
+          }}
+          onClose={() => setShowMyPage(false)}
+        />
+      )}
+
       {/* 게임 종료 화면 — 승리 진영·역할 전체 공개·다시하기/로비로 */}
       {gameOver && (
         <GameOverScreen

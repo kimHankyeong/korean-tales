@@ -7,6 +7,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { PhaseKind } from '../lib/format';
+import { Avatar } from './Avatar';
 import { CountdownText, type CountdownTarget } from './CountdownText';
 import { PhaseBadge } from './PhaseBadge';
 
@@ -14,6 +15,8 @@ export interface ChatMessageView {
   id: string;
   kind: 'CHAT' | 'SYSTEM';
   senderName?: string;
+  /** 발신자 계정 프로필 사진 — 없으면 기본 아바타 (requirements 11번 게임 내 연동) */
+  senderAvatarUrl?: string | null;
   text: string;
 }
 
@@ -89,9 +92,12 @@ export function ChatWindow({
               {m.text}
             </p>
           ) : (
-            <p key={m.id} className="text-sm leading-snug">
-              <span className="mr-1.5 font-semibold text-sky-300">{m.senderName}</span>
-              <span className="text-slate-100">{m.text}</span>
+            <p key={m.id} className="flex items-start gap-1.5 text-sm leading-snug">
+              <Avatar name={m.senderName ?? '?'} url={m.senderAvatarUrl} size={20} />
+              <span>
+                <span className="mr-1.5 font-semibold text-sky-300">{m.senderName}</span>
+                <span className="text-slate-100">{m.text}</span>
+              </span>
             </p>
           ),
         )}

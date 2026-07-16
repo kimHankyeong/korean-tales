@@ -124,6 +124,32 @@ export class AuthService {
     return toAuthUser(session.user);
   }
 
+  /* ── 마이페이지 (requirements 11번) ── */
+
+  /** 닉네임 변경 — 가입 때와 같은 규칙(2~12자·중복 불가) */
+  async updateNickname(
+    userId: string,
+    rawNickname: string,
+  ): Promise<{ ok: true; user: AuthUser } | { ok: false; error: 'INVALID_NICKNAME' | 'NICKNAME_TAKEN' }> {
+    const nickname = rawNickname.trim();
+    if (nickname.length < NICKNAME_MIN || nickname.length > NICKNAME_MAX) {
+      return { ok: false, error: 'INVALID_NICKNAME' };
+    }
+    const existing = await this.prisma.user.findUnique({ where: { nickname } });
+    if (existing && existing.id !== userId) return { ok: false, error: 'NICKNAME_TAKEN' };
+    const user = await this.prisma.user.update({ where: { id: userId }, data: { nickname } });
+    return { ok: true, user: toAuthUser(user) };
+  }
+
+  /** 프로필 사진 URL 갱신 (파일 저장은 profile/routes.ts 담당) */
+  async updateAvatarUrl(userId: string, url: string): Promise<AuthUser> {
+    const user = await this.prisma.user.update({
+      where: { id: userId },
+      data: { profileImageUrl: url },
+    });
+    return toAuthUser(user);
+  }
+
   private async createSession(userId: string): Promise<string> {
     const token = randomBytes(32).toString('base64url');
     await this.prisma.session.create({

@@ -22,6 +22,8 @@ export interface GameUiState {
   timer: CountdownTarget | null;
   /** 방 옵션: 개인 발언시간 (발언 순서 표시 포맷에 사용) */
   personalSpeechSeconds: number;
+  /** 내 계정 프로필 (마이페이지) — 소켓 연동 시 /auth/me 결과로 대체 */
+  myProfile: { nickname: string; profileImageUrl: string | null };
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -30,6 +32,10 @@ export interface GameUiState {
   addSystemMessage(text: string): void;
   /** 발언 순서 시스템 메시지: `(해)낮-80초-1번` */
   announceSpeaker(seat: number): void;
+  /** 마이페이지: 닉네임 변경 — 내 플레이어 표시 이름에도 반영 */
+  setMyNickname(nickname: string): void;
+  /** 마이페이지: 프로필 사진 변경 — 게임 내 프로필 표시에도 반영 */
+  setMyAvatarUrl(url: string | null): void;
 }
 
 /** 목 데이터 — 9인 방 가정 */
@@ -38,6 +44,7 @@ const MOCK_PLAYERS: PublicPlayerState[] = Array.from({ length: 9 }, (_, i) => ({
   name: ['달래', '바우', '초롱', '무영', '가람', '소소', '한별', '누리', '재이'][i]!,
   seat: i + 1,
   alive: i !== 4, // 5번은 사망자 예시
+  avatarUrl: null, // 미설정 → 기본 아바타
 }));
 
 export const useGameStore = create<GameUiState>((set, get) => ({
@@ -51,6 +58,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   condemnedId: null,
   timer: null,
   personalSpeechSeconds: 80,
+  myProfile: { nickname: '달래', profileImageUrl: null },
 
   setPhase: (phase) => {
     set({ phase });
@@ -65,12 +73,18 @@ export const useGameStore = create<GameUiState>((set, get) => ({
     }),
 
   sendChat: (text) => {
-    const { players, myId, messages } = get();
+    const { players, myId, messages, myProfile } = get();
     const me = players.find((p) => p.id === myId);
     set({
       messages: [
         ...messages,
-        { id: messageId(), kind: 'CHAT', senderName: me?.name ?? '나', text },
+        {
+          id: messageId(),
+          kind: 'CHAT',
+          senderName: me?.name ?? '나',
+          senderAvatarUrl: myProfile.profileImageUrl,
+          text,
+        },
       ],
     });
   },
@@ -82,4 +96,16 @@ export const useGameStore = create<GameUiState>((set, get) => ({
     const { phase, personalSpeechSeconds } = get();
     get().addSystemMessage(formatSpeechOrderLabel(phase, personalSpeechSeconds, seat));
   },
+
+  setMyNickname: (nickname) =>
+    set((state) => ({
+      myProfile: { ...state.myProfile, nickname },
+      players: state.players.map((p) => (p.id === state.myId ? { ...p, name: nickname } : p)),
+    })),
+
+  setMyAvatarUrl: (url) =>
+    set((state) => ({
+      myProfile: { ...state.myProfile, profileImageUrl: url },
+      players: state.players.map((p) => (p.id === state.myId ? { ...p, avatarUrl: url } : p)),
+    })),
 }));

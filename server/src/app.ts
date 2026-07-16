@@ -8,6 +8,7 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import { registerAuthRoutes } from './auth/routes';
 import type { AuthService } from './auth/service';
+import { registerProfileRoutes } from './profile/routes';
 
 /**
  * CORS 허용 오리진 — CLIENT_ORIGIN 환경변수(쉼표 구분)로 제한.
@@ -19,8 +20,17 @@ export function corsOrigin(): string[] | true {
   return raw.split(',').map((origin) => origin.trim()).filter(Boolean);
 }
 
-export async function createApp(auth: AuthService): Promise<FastifyInstance> {
+export interface CreateAppOptions {
+  /** 아바타 업로드 저장 경로 — 기본 UPLOADS_DIR 환경변수 또는 ./uploads */
+  uploadsDir?: string;
+}
+
+export async function createApp(
+  auth: AuthService,
+  options: CreateAppOptions = {},
+): Promise<FastifyInstance> {
   const app = Fastify();
+  const uploadsDir = options.uploadsDir ?? process.env.UPLOADS_DIR ?? './uploads';
 
   await app.register(cookie, {
     // 선택: 쿠키 서명 시크릿 — 세션 토큰 자체가 불투명 랜덤 값이라 필수는 아니지만,
@@ -33,6 +43,7 @@ export async function createApp(auth: AuthService): Promise<FastifyInstance> {
   });
 
   registerAuthRoutes(app, auth);
+  registerProfileRoutes(app, auth, { uploadsDir });
 
   // Render 헬스체크 경로 (render.yaml healthCheckPath)
   app.get('/health', async () => ({ ok: true }));

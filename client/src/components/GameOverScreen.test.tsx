@@ -6,9 +6,9 @@ import { GameOverScreen } from './GameOverScreen';
 afterEach(cleanup);
 
 const players: PublicPlayerState[] = [
-  { id: 'p1', name: '달래', seat: 1, alive: false },
-  { id: 'p2', name: '바우', seat: 2, alive: true },
-  { id: 'p3', name: '초롱', seat: 3, alive: true },
+  { id: 'p1', name: '달래', seat: 1, alive: false, avatarUrl: null },
+  { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: null },
+  { id: 'p3', name: '초롱', seat: 3, alive: true, avatarUrl: null },
 ];
 
 /** 선 승리 — 악(p1) 패배·사망, 선(p2) 승리, 생존 중립(p3) 합류 */

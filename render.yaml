@@ -27,6 +27,8 @@ services:
         value: production # 세션 쿠키 Secure 플래그 활성화
       - key: DATABASE_URL
         value: file:/data/korean_tales.db # 영구 디스크 마운트 경로 (아래 disk와 일치)
+      - key: UPLOADS_DIR
+        value: /data/uploads # 아바타 업로드 저장 경로 — DB와 같은 영구 디스크 사용
       # 클라이언트 배포 도메인으로 CORS 제한 — 클라이언트 호스팅 주소로 교체할 것
       - key: CLIENT_ORIGIN
         value: https://korean-tales.example.com

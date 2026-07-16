@@ -36,9 +36,14 @@ function makeEmitter(io: Server, roomCode: string): RoomEmitter {
 function joiningPlayerOf(socket: Socket, providedName: unknown): JoiningPlayer {
   const identity = identityOf(socket);
   if (identity.kind === 'USER') {
-    return { id: socket.id, name: identity.nickname, accountId: identity.userId };
+    return {
+      id: socket.id,
+      name: identity.nickname,
+      accountId: identity.userId,
+      avatarUrl: identity.profileImageUrl, // 계정 프로필 사진 → 게임 내 프로필 표시 (11번)
+    };
   }
-  return { id: socket.id, name: sanitizeName(providedName) };
+  return { id: socket.id, name: sanitizeName(providedName), avatarUrl: null };
 }
 
 export interface RegisterHandlersOptions {

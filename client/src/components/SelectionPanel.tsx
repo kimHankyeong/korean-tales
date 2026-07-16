@@ -8,12 +8,15 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
+import { Avatar } from './Avatar';
 
 export interface SelectablePlayer {
   id: string;
   seat: number;
   name: string;
   alive: boolean;
+  /** 계정 프로필 사진 — 없으면 기본 아바타 (requirements 11번 게임 내 연동) */
+  avatarUrl?: string | null;
 }
 
 export type SelectionTarget = string | 'ABSTAIN';
@@ -75,10 +78,8 @@ export function SelectionPanel({
                   isSelected ? 'bg-amber-600/30 ring-2 ring-amber-400' : 'hover:bg-slate-700/60'
                 } disabled:cursor-not-allowed disabled:opacity-30`}
               >
-                {/* 프로필 자리 — 일러스트 연동 전 이니셜 원형 */}
-                <span className="grid size-9 place-items-center rounded-full bg-slate-600 text-sm font-bold text-slate-100">
-                  {p.name.charAt(0)}
-                </span>
+                {/* 계정 프로필 사진 — 미설정 시 기본 아바타 */}
+                <Avatar name={p.name} url={p.avatarUrl} size={36} />
                 <span className="text-[11px] text-slate-300">{p.seat}번</span>
               </button>
             );

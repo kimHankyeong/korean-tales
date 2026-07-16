@@ -84,6 +84,8 @@ export interface RoomPlayerInfo {
   id: string;
   name: string;
   isHost: boolean;
+  /** 계정 프로필 사진 URL (서버 상대 경로) — 없으면 기본 아바타 표시 */
+  avatarUrl: string | null;
   // 진영 선호는 전략 정보라 로비에서도 서로 공개하지 않는다 — 본인 확인은 ack로
 }
 
@@ -109,6 +111,8 @@ export interface PublicPlayerState {
   name: string;
   seat: number;
   alive: boolean;
+  /** 계정 프로필 사진 URL — 플레이어 목록·투표창·채팅 프로필에 사용, 없으면 기본 아바타 */
+  avatarUrl: string | null;
 }
 
 /** 방 전체 공개 상태 — 캐릭터·진영·밤 행동·투표 내역은 포함하지 않는다 */

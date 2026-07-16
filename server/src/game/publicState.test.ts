@@ -45,7 +45,10 @@ describe('공개 게임 상태 (정보 은닉의 단일 관문)', () => {
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' }); // 비밀 악 투표
 
     const serialized = JSON.stringify(
-      toPublicGameState(snapshot(), { p1: '갑', p2: '을' }),
+      toPublicGameState(snapshot(), {
+        p1: { name: '갑', avatarUrl: null },
+        p2: { name: '을', avatarUrl: null },
+      }),
     );
     expect(serialized).not.toContain('characterId');
     expect(serialized).not.toContain('faction');
@@ -56,11 +59,19 @@ describe('공개 게임 상태 (정보 은닉의 단일 관문)', () => {
     expect(serialized).not.toContain('evilVotes');
   });
 
-  it('공개 상태에는 페이즈·생존 여부·이름이 포함된다', () => {
+  it('공개 상태에는 페이즈·생존 여부·이름·아바타가 포함된다', () => {
     const { snapshot } = startSnapshot();
-    const state = toPublicGameState(snapshot(), { p1: '갑' });
+    const state = toPublicGameState(snapshot(), {
+      p1: { name: '갑', avatarUrl: '/uploads/avatars/u1.webp' },
+    });
     expect(state.phase).toBe('firstMorning.candidacy');
-    expect(state.players[0]).toEqual({ id: 'p1', name: '갑', seat: 1, alive: true });
+    expect(state.players[0]).toEqual({
+      id: 'p1',
+      name: '갑',
+      seat: 1,
+      alive: true,
+      avatarUrl: '/uploads/avatars/u1.webp',
+    });
     expect(state.winner).toBeNull();
   });
 

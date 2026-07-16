@@ -20,9 +20,14 @@ export function phasePath(value: unknown): string {
   return String(value);
 }
 
+export interface PlayerMeta {
+  name: string;
+  avatarUrl: string | null;
+}
+
 export function toPublicGameState(
   snapshot: GameSnapshot,
-  names: Record<string, string>,
+  meta: Record<string, PlayerMeta>,
 ): PublicGameState {
   const { context } = snapshot;
   return {
@@ -30,9 +35,10 @@ export function toPublicGameState(
     day: context.day,
     players: context.players.map((p) => ({
       id: p.id,
-      name: names[p.id] ?? p.id,
+      name: meta[p.id]?.name ?? p.id,
       seat: p.seat,
       alive: p.alive,
+      avatarUrl: meta[p.id]?.avatarUrl ?? null,
     })),
     advisorId: context.advisorId,
     speechDirection: context.speechDirection,

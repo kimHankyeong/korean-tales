@@ -43,6 +43,8 @@ export interface RoomPlayer {
   factionPreference: Faction | null;
   /** 로그인 유저의 계정 id — 게스트는 없음 (추후 전적/마이페이지 연동용) */
   accountId?: string;
+  /** 계정 프로필 사진 URL — 게스트/미설정은 null (기본 아바타) */
+  avatarUrl: string | null;
 }
 
 /** 방 생성/입장 시 신원 — name은 로그인 유저면 계정 닉네임 (registerHandlers에서 결정) */
@@ -50,6 +52,7 @@ export interface JoiningPlayer {
   id: string;
   name: string;
   accountId?: string;
+  avatarUrl?: string | null;
 }
 
 export type RoomError =
@@ -104,6 +107,7 @@ export class Room {
       name: host.name,
       factionPreference: null,
       accountId: host.accountId,
+      avatarUrl: host.avatarUrl ?? null,
     });
   }
 
@@ -116,7 +120,12 @@ export class Room {
       code: this.code,
       hostId: this.hostId,
       settings: { ...this.settings },
-      players: this.players.map((p) => ({ id: p.id, name: p.name, isHost: p.id === this.hostId })),
+      players: this.players.map((p) => ({
+        id: p.id,
+        name: p.name,
+        isHost: p.id === this.hostId,
+        avatarUrl: p.avatarUrl,
+      })),
       inGame: this.inGame,
     };
   }
@@ -136,6 +145,7 @@ export class Room {
         name: player.name,
         factionPreference: null,
         accountId: player.accountId,
+        avatarUrl: player.avatarUrl ?? null,
       });
     }
     this.broadcastRoomState();
@@ -229,12 +239,14 @@ export class Room {
 
   /* ── 상태 브로드캐스트 (정보 은닉) ─────────────── */
 
-  private playerNames(): Record<string, string> {
-    return Object.fromEntries(this.players.map((p) => [p.id, p.name]));
+  private playerMeta(): Record<string, { name: string; avatarUrl: string | null }> {
+    return Object.fromEntries(
+      this.players.map((p) => [p.id, { name: p.name, avatarUrl: p.avatarUrl }]),
+    );
   }
 
   private broadcastPublicState(snapshot: GameSnapshot): void {
-    this.emitter.toRoom(SOCKET_EVENTS.gameState, toPublicGameState(snapshot, this.playerNames()));
+    this.emitter.toRoom(SOCKET_EVENTS.gameState, toPublicGameState(snapshot, this.playerMeta()));
   }
 
   private onSnapshot(snapshot: GameSnapshot): void {
