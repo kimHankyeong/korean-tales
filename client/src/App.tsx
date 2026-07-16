@@ -14,6 +14,7 @@ import { MyPage } from './components/MyPage';
 import { PlayerListPanel } from './components/PlayerListPanel';
 import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
 import { ServerWakeNotice } from './components/ServerWakeNotice';
+import { SkillBookModal } from './components/SkillBookModal';
 import { useGameStore } from './store/gameStore';
 
 type PanelKind = 'NONE' | 'VOTE' | 'SKILL' | 'SKILL_FORGO';
@@ -42,6 +43,7 @@ export default function App() {
   const [nextSeat, setNextSeat] = useState(1);
   const [gameOver, setGameOver] = useState<GameOverPayload | null>(null);
   const [showMyPage, setShowMyPage] = useState(false);
+  const [showSkillBook, setShowSkillBook] = useState(false);
 
   function confirmSelection(target: SelectionTarget) {
     const label =
@@ -59,6 +61,16 @@ export default function App() {
     <main className="flex h-screen flex-col gap-3 bg-slate-950 p-4 text-slate-100 md:flex-row">
       {/* 무료 서버 콜드스타트 안내 — 슬립에서 깨어나는 동안만 표시 (12번 섹션) */}
       <ServerWakeNotice />
+
+      {/* 직업 설명 버튼 — 우측 상단 고정 (6번 섹션) */}
+      <button
+        type="button"
+        onClick={() => setShowSkillBook(true)}
+        className="fixed right-4 top-4 z-50 rounded-full border border-amber-500/50 bg-slate-900/90 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-lg hover:bg-slate-800"
+      >
+        직업 설명
+      </button>
+      {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
 
       {/* 채팅창 */}
       <div className="min-h-0 flex-1">
