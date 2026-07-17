@@ -7,9 +7,10 @@ import { useEffect } from 'react';
 import { SOCKET_EVENTS } from '@korean-tales/shared';
 import { AuthScreen } from './components/AuthScreen';
 import { GameScreen } from './components/GameScreen';
-import { LobbyScreen } from './components/LobbyScreen';
+import { LobbyFlow } from './components/LobbyFlow';
 import { connectSocket, disconnectSocket } from './lib/socket';
 import { useAuthStore } from './store/authStore';
+import { useGameStore } from './store/gameStore';
 import { useRoomStore } from './store/roomStore';
 
 export function AppRouter() {
@@ -19,6 +20,7 @@ export function AppRouter() {
   const room = useRoomStore((s) => s.room);
   const applyRoomState = useRoomStore((s) => s.applyRoomState);
   const leaveRoom = useRoomStore((s) => s.leaveRoom);
+  const gameOverResult = useGameStore((s) => s.gameOverResult);
 
   useEffect(() => {
     void checkSession();
@@ -61,5 +63,7 @@ export function AppRouter() {
   }
   if (status === 'SIGNED_OUT') return <AuthScreen />;
 
-  return room?.inGame ? <GameScreen /> : <LobbyScreen />;
+  // gameOverResult가 남아있는 동안은 방이 이미 inGame:false여도 결과 화면을 계속 보여준다
+  // (그래야 "다시하기"를 누르기 전에 GameScreen이 먼저 사라지는 일이 없다)
+  return room?.inGame || gameOverResult ? <GameScreen /> : <LobbyFlow />;
 }

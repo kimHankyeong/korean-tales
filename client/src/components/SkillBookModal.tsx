@@ -18,6 +18,7 @@ import {
   type SkillUses,
 } from '@korean-tales/shared';
 import { CHARACTER_IMAGES } from '../lib/characterImages';
+import { CloseButton } from './CloseButton';
 
 const FACTION_TAB_STYLE: Record<Faction, string> = {
   EVIL: 'border-purple-500 text-purple-200',
@@ -55,17 +56,9 @@ export function SkillBookModal({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-label="직업 설명"
     >
-      <div className="mx-auto flex max-w-3xl flex-col rounded-2xl border border-slate-600 bg-slate-900 p-4 md:p-6">
-        <header className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-bold text-amber-300">직업 설명</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-slate-500 px-3 py-1 text-sm text-slate-300 hover:bg-slate-800"
-          >
-            닫기
-          </button>
-        </header>
+      <div className="relative mx-auto flex max-w-3xl flex-col rounded-2xl border border-slate-600 bg-slate-900 p-4 md:p-6">
+        <CloseButton onClick={onClose} />
+        <h2 className="mb-3 text-center text-base font-bold text-amber-300">직업 설명</h2>
 
         {/* 진영 탭 */}
         <div className="flex gap-1.5" role="tablist" aria-label="진영 선택">

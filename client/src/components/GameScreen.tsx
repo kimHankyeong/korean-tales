@@ -86,6 +86,12 @@ export function GameScreen() {
     };
   }, []);
 
+  // 다시하기 — 방은 나가지 않고 결과 화면만 닫는다. 서버가 게임 종료 시 방을 자동 비공개
+  // 전환 + 전원 준비 초기화해두므로, AppRouter가 곧바로 같은 방의 준비 화면을 보여준다.
+  function restartSameRoom() {
+    useGameStore.setState({ gameOverResult: null });
+  }
+
   function goLobby() {
     useGameStore.setState({ gameOverResult: null });
     getSocket().emit(SOCKET_EVENTS.roomLeave);
@@ -288,7 +294,7 @@ export function GameScreen() {
         <GameOverScreen
           result={store.gameOverResult}
           players={store.players}
-          onRestart={goLobby}
+          onRestart={restartSameRoom}
           onGoLobby={goLobby}
         />
       )}

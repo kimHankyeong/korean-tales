@@ -2,6 +2,7 @@
  * RoomManager — 방 코드 발급·조회·정리, 플레이어의 소속 방 추적.
  */
 
+import type { RoomSummary } from '@korean-tales/shared';
 import { Room, type JoiningPlayer, type RoomEmitter } from './room';
 
 /** 혼동되기 쉬운 문자(0/O, 1/I)를 뺀 방 코드 문자셋 */
@@ -67,6 +68,18 @@ export class RoomManager {
       room.dispose();
       this.rooms.delete(room.code);
     }
+  }
+
+  /** 모집 중(비공개 아님·진행 중 아님·정원 미달)인 공개방 요약 목록 */
+  list(): RoomSummary[] {
+    return Array.from(this.rooms.values())
+      .filter((room) => room.isPublic && !room.inGame && room.players.length < room.settings.mode)
+      .map((room) => ({
+        code: room.code,
+        hostName: room.players.find((p) => p.id === room.hostId)?.name ?? '',
+        playerCount: room.players.length,
+        mode: room.settings.mode,
+      }));
   }
 
   /** 서버 종료용 — 모든 방·세션·타이머 정리 */

@@ -12,6 +12,7 @@ import {
   type ClientGameAction,
   type Faction,
   type RoomSettingsPayload,
+  type RoomSummary,
 } from '@korean-tales/shared';
 import { RoomManager } from '../rooms/roomManager';
 import type { JoiningPlayer, RoomEmitter } from '../rooms/room';
@@ -117,6 +118,16 @@ export function registerHandlers(
     socket.on(SOCKET_EVENTS.roomStart, (_data: unknown, ack?: Ack) => {
       const room = manager.roomOf(playerId);
       const error = room ? room.startGame(playerId) : 'NOT_IN_ROOM';
+      ack?.(error ? { ok: false, error } : { ok: true });
+    });
+
+    socket.on(SOCKET_EVENTS.roomList, (_data: unknown, ack?: (res: { ok: true; rooms: RoomSummary[] }) => void) => {
+      ack?.({ ok: true, rooms: manager.list() });
+    });
+
+    socket.on(SOCKET_EVENTS.roomVisibility, (data: { isPublic?: boolean }, ack?: Ack) => {
+      const room = manager.roomOf(playerId);
+      const error = room ? room.setVisibility(playerId, !!data?.isPublic) : 'NOT_IN_ROOM';
       ack?.(error ? { ok: false, error } : { ok: true });
     });
 

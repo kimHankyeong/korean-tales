@@ -1,5 +1,5 @@
 /**
- * 로비 화면 — 방 생성/입장, 방장 설정 변경, 진영 선호 선택, 게임 시작.
+ * 방 안 화면 — 플레이어 목록·준비 토글·방장 설정·진영 선호·공개 전환.
  * requirements 1번(방 옵션) 섹션. 로그인 계정만 접속 가능(REQUIRE_AUTH)하므로
  * room:create/room:join의 name은 서버가 계정 닉네임으로 대체해 무시한다.
  */
@@ -10,53 +10,31 @@ import {
   SOCKET_EVENTS,
   type Faction,
   type RoomSettingsPayload,
-  type RoomStatePayload,
 } from '@korean-tales/shared';
 import { emitWithAck, getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useRoomStore } from '../store/roomStore';
+import { BackButton } from './BackButton';
+import { SkillBookModal } from './SkillBookModal';
 
 interface RoomAck {
   ok: boolean;
   error?: string;
-  room?: RoomStatePayload;
 }
 
 const FACTION_LABEL: Record<Faction, string> = { GOOD: '선', EVIL: '악', NEUTRAL: '중립' };
 
-export function LobbyScreen() {
+export function RoomLobbyScreen() {
   const myId = useAuthStore((s) => s.user?.id);
-  const room = useRoomStore((s) => s.room);
-  const applyRoomState = useRoomStore((s) => s.applyRoomState);
-  const [joinCode, setJoinCode] = useState('');
+  const room = useRoomStore((s) => s.room)!;
+  const leaveRoom = useRoomStore((s) => s.leaveRoom);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [faction, setFaction] = useState<Faction | null>(null);
-
-  async function createRoom() {
-    setBusy(true);
-    setError(null);
-    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomCreate, {});
-    setBusy(false);
-    if (ack.ok && ack.room) applyRoomState(ack.room);
-    else setError(ack.error ?? '방 생성에 실패했어요.');
-  }
-
-  async function joinRoom() {
-    if (!joinCode.trim()) return;
-    setBusy(true);
-    setError(null);
-    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomJoin, { code: joinCode.trim().toUpperCase() });
-    setBusy(false);
-    if (ack.ok && ack.room) applyRoomState(ack.room);
-    else setError(ack.error ?? '입장에 실패했어요.');
-  }
+  const [showSkillBook, setShowSkillBook] = useState(false);
 
   async function updateSettings(patch: Partial<RoomSettingsPayload>) {
-    if (!room) return;
-    const settings = { ...room.settings, ...patch };
-    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomSettings, settings);
-    if (ack.ok && ack.room) applyRoomState(ack.room);
+    await emitWithAck<RoomAck>(SOCKET_EVENTS.roomSettings, { ...room.settings, ...patch });
   }
 
   function chooseFaction(next: Faction) {
@@ -73,48 +51,13 @@ export function LobbyScreen() {
     if (!ack.ok) setError(ack.error ?? '준비 상태를 바꿀 수 없어요.');
   }
 
-  if (!room) {
-    return (
-      <main className="grid h-screen place-items-center bg-slate-950 p-4 text-slate-100">
-        <div className="flex w-full max-w-sm flex-col gap-3 rounded-xl border border-slate-700 bg-slate-900 p-6">
-          <h1 className="text-center text-lg font-bold text-amber-300">로비</h1>
+  async function toggleVisibility() {
+    await emitWithAck<RoomAck>(SOCKET_EVENTS.roomVisibility, { isPublic: !room.isPublic });
+  }
 
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void createRoom()}
-            className="rounded-lg bg-amber-600 py-2 text-sm font-bold text-white disabled:opacity-50"
-          >
-            방 만들기
-          </button>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={joinCode}
-              onChange={(e) => setJoinCode(e.target.value)}
-              placeholder="입장 코드"
-              aria-label="입장 코드"
-              className="min-w-0 flex-1 rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm uppercase text-slate-100 placeholder:text-slate-500"
-            />
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void joinRoom()}
-              className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold text-slate-200 disabled:opacity-50"
-            >
-              입장
-            </button>
-          </div>
-
-          {error && (
-            <p role="alert" className="text-center text-xs text-red-400">
-              {error}
-            </p>
-          )}
-        </div>
-      </main>
-    );
+  function goBack() {
+    getSocket().emit(SOCKET_EVENTS.roomLeave);
+    leaveRoom();
   }
 
   const isHost = room.hostId === myId;
@@ -124,10 +67,32 @@ export function LobbyScreen() {
 
   return (
     <main className="flex h-screen flex-col gap-4 bg-slate-950 p-4 text-slate-100 md:flex-row">
-      <section className="flex-1 rounded-xl border border-slate-700 bg-slate-900 p-4">
-        <h1 className="mb-1 text-sm font-bold text-amber-300">
-          방 코드 <span className="tracking-widest">{room.code}</span>
-        </h1>
+      <BackButton onClick={goBack} />
+
+      {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
+
+      <section className="flex-1 rounded-xl border border-slate-700 bg-slate-900 p-4 pt-12 md:pt-4">
+        <div className="mb-1 flex items-center gap-2">
+          <h1 className="text-sm font-bold text-amber-300">
+            방 코드 <span className="tracking-widest">{room.code}</span>
+          </h1>
+          <button
+            type="button"
+            onClick={() => setShowSkillBook(true)}
+            className="rounded-full border border-amber-500/50 bg-slate-800/90 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-slate-700"
+          >
+            직업 설명
+          </button>
+          {isHost && (
+            <button
+              type="button"
+              onClick={() => void toggleVisibility()}
+              className="ml-auto rounded-full border border-slate-500 px-2.5 py-1 text-[11px] text-slate-300 hover:bg-slate-800"
+            >
+              {room.isPublic ? '공개방 (클릭 시 비공개)' : '비공개방 (클릭 시 공개)'}
+            </button>
+          )}
+        </div>
         <p className="mb-2 text-xs text-slate-400">
           {readyCount}/{room.settings.mode}명 준비 완료 — 정원이 차고 전원 준비되면 자동 시작돼요
         </p>

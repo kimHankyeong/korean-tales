@@ -140,6 +140,16 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     const { room } = makeRoom();
     expect(room.setReady('ghost', true)).toBe('NOT_IN_ROOM');
   });
+
+  it('방은 기본적으로 공개고, 공개/비공개 전환은 방장만 할 수 있다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    expect(room.isPublic).toBe(true);
+    expect(room.setVisibility('u2', false)).toBe('NOT_HOST');
+    expect(room.isPublic).toBe(true);
+    expect(room.setVisibility('u1', false)).toBeNull();
+    expect(room.isPublic).toBe(false);
+  });
 });
 
 describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {
@@ -272,6 +282,10 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(payload.winner).toBe('GOOD');
     expect(payload.roles).toHaveLength(9);
     expect(room.inGame).toBe(false);
+
+    // 재시작(다시하기) 대비: 자동 비공개 전환 + 전원 준비 초기화 (낯선 사람 유입 방지)
+    expect(room.isPublic).toBe(false);
+    expect(room.players.every((p) => !p.ready)).toBe(true);
   });
 
   it('30초 내 전원 동의 실패 시 투항이 취소되고 게임은 계속된다', () => {
@@ -318,5 +332,22 @@ describe('RoomManager', () => {
     const room2 = manager.create({ id: 'b', name: 'B' }); // b가 새 방 생성
     expect(room1.players.some((p) => p.id === 'b')).toBe(false);
     expect(manager.roomOf('b')).toBe(room2);
+  });
+
+  it('list()는 모집 중(공개·정원 미달·미시작)인 방만 요약해서 보여준다', () => {
+    const manager = new RoomManager(() => new FakeEmitter(), seededRng(7));
+    const open = manager.create({ id: 'a', name: '방장A' });
+    manager.join(open.code, { id: 'b', name: 'B' });
+
+    const full = manager.create({ id: 'c', name: '방장C' });
+    full.updateSettings('c', { mode: 7, personalSpeechSeconds: 80, discussionSeconds: 180 });
+    for (const id of ['d', 'e', 'f', 'g', 'h', 'i']) manager.join(full.code, { id, name: id });
+    expect(full.players).toHaveLength(7); // 정원 참
+
+    const privateRoom = manager.create({ id: 'j', name: '방장J' });
+    privateRoom.setVisibility('j', false);
+
+    const list = manager.list();
+    expect(list).toEqual([{ code: open.code, hostName: '방장A', playerCount: 2, mode: 9 }]);
   });
 });

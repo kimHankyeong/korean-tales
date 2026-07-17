@@ -34,6 +34,10 @@ export const SOCKET_EVENTS = {
   roomReady: 'room:ready',
   /** C→S (ack): 방장 게임 시작 */
   roomStart: 'room:start',
+  /** C→S (ack): 모집 중(비공개 아님·정원 미달·미시작)인 공개방 목록 조회 → { rooms: RoomSummary[] } */
+  roomList: 'room:list',
+  /** C→S (ack, 방장 전용): 방 공개/비공개 전환 { isPublic: boolean } */
+  roomVisibility: 'room:visibility',
   /** S→방 전체: 로비 상태 동기화 */
   roomState: 'room:state',
 
@@ -101,6 +105,16 @@ export interface RoomStatePayload {
   settings: RoomSettingsPayload;
   players: RoomPlayerInfo[];
   inGame: boolean;
+  /** 공개방 목록(room:list)에 노출되는지 — 게임 종료 시 자동으로 false가 된다 */
+  isPublic: boolean;
+}
+
+/** room:list 응답 항목 — 모집 중인 공개방 요약 (코드 없이는 진영/타이머 등 세부 설정은 노출하지 않는다) */
+export interface RoomSummary {
+  code: string;
+  hostName: string;
+  playerCount: number;
+  mode: PlayerMode;
 }
 
 /* ── 게임 ── */

@@ -89,6 +89,8 @@ export class Room {
   settings: RoomSettingsPayload;
   players: RoomPlayer[] = [];
   session: GameSession | null = null;
+  /** 공개방 목록(room:list)에 노출되는지 — 게임이 끝나면 자동으로 false가 된다 */
+  isPublic = true;
 
   private surrender: SurrenderState | null = null;
   private readonly surrenderTimer = new PhaseTimer();
@@ -131,6 +133,7 @@ export class Room {
         ready: p.ready,
       })),
       inGame: this.inGame,
+      isPublic: this.isPublic,
     };
   }
 
@@ -191,6 +194,14 @@ export class Room {
     const player = this.players.find((p) => p.id === playerId);
     if (!player) return 'NOT_IN_ROOM';
     player.factionPreference = faction;
+    return null;
+  }
+
+  /** 공개/비공개 전환 — 방장 전용. 게임 종료 시 자동으로 비공개 전환된 방을 다시 공개할 때도 사용 */
+  setVisibility(requesterId: string, isPublic: boolean): RoomError | null {
+    if (requesterId !== this.hostId) return 'NOT_HOST';
+    this.isPublic = isPublic;
+    this.broadcastRoomState();
     return null;
   }
 
@@ -328,6 +339,9 @@ export class Room {
     this.lastInvestigation = null;
     this.surrenderTimer.cancel();
     this.surrender = null;
+    // 재시작(다시하기) 시 낯선 사람이 끼어들지 못하도록 자동 비공개 전환 + 전원 재준비 요구
+    this.isPublic = false;
+    this.resetReady();
     this.broadcastRoomState();
   }
 
