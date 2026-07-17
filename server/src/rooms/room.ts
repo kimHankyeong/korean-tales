@@ -45,6 +45,8 @@ export interface RoomPlayer {
   accountId?: string;
   /** 계정 프로필 사진 URL — 게스트/미설정은 null (기본 아바타) */
   avatarUrl: string | null;
+  /** 준비 완료 여부 — 인원 변경·설정 변경 시 전원 초기화 (1번 섹션 준비 시스템) */
+  ready: boolean;
 }
 
 /** 방 생성/입장 시 신원 — name은 로그인 유저면 계정 닉네임 (registerHandlers에서 결정) */
@@ -108,6 +110,7 @@ export class Room {
       factionPreference: null,
       accountId: host.accountId,
       avatarUrl: host.avatarUrl ?? null,
+      ready: false,
     });
   }
 
@@ -125,6 +128,7 @@ export class Room {
         name: p.name,
         isHost: p.id === this.hostId,
         avatarUrl: p.avatarUrl,
+        ready: p.ready,
       })),
       inGame: this.inGame,
     };
@@ -132,6 +136,11 @@ export class Room {
 
   private broadcastRoomState(): void {
     this.emitter.toRoom(SOCKET_EVENTS.roomState, this.toState());
+  }
+
+  /** 인원·설정이 바뀌면 이전 준비 확인은 무효 — 전원 다시 눌러야 한다 */
+  private resetReady(): void {
+    this.players = this.players.map((p) => ({ ...p, ready: false }));
   }
 
   /* ── 로비 ─────────────────────────────────────── */
@@ -146,7 +155,9 @@ export class Room {
         factionPreference: null,
         accountId: player.accountId,
         avatarUrl: player.avatarUrl ?? null,
+        ready: false,
       });
+      this.resetReady();
     }
     this.broadcastRoomState();
     return null;
@@ -158,6 +169,7 @@ export class Room {
     if (this.players.length === 0) return true;
     // 방장 승계: 남은 사람 중 먼저 들어온 순
     if (this.hostId === playerId) this.hostId = this.players[0]!.id;
+    this.resetReady();
     this.broadcastRoomState();
     return false;
   }
@@ -169,6 +181,7 @@ export class Room {
     // 모드 축소로 정원 초과가 되면 거부
     if (this.players.length > settings.mode) return 'ROOM_FULL';
     this.settings = { ...settings };
+    this.resetReady();
     this.broadcastRoomState();
     return null;
   }
@@ -181,10 +194,34 @@ export class Room {
     return null;
   }
 
+  /**
+   * 준비 토글 — 정원(방 설정 인원수)이 정확히 다 차고 전원이 준비되면 자동으로 게임을 시작한다
+   * (1번 섹션 준비 시스템). 정원 미달 상태에서도 준비 자체는 허용한다.
+   */
+  setReady(playerId: string, ready: boolean): RoomError | null {
+    if (this.inGame) return 'ALREADY_IN_GAME';
+    const player = this.players.find((p) => p.id === playerId);
+    if (!player) return 'NOT_IN_ROOM';
+    player.ready = ready;
+    this.broadcastRoomState();
+
+    if (this.players.length === this.settings.mode && this.players.every((p) => p.ready)) {
+      this.beginGame();
+    }
+    return null;
+  }
+
   /* ── 게임 시작 ────────────────────────────────── */
 
   startGame(requesterId: string): RoomError | null {
     if (requesterId !== this.hostId) return 'NOT_HOST';
+    if (this.inGame) return 'ALREADY_IN_GAME';
+    if (this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
+    return this.beginGame();
+  }
+
+  /** 실제 게임 시작 처리 — 정원·권한 검증은 호출부(startGame/setReady)가 담당 */
+  private beginGame(): RoomError | null {
     if (this.inGame) return 'ALREADY_IN_GAME';
     if (this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
 

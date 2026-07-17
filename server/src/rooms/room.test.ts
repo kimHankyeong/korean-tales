@@ -99,6 +99,47 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     fillRoom(room, 5); // 6명뿐
     expect(room.startGame('u1')).toBe('NOT_ENOUGH_PLAYERS');
   });
+
+  it('정원이 다 차고 전원 준비되면 방장의 시작 클릭 없이 자동으로 게임이 시작된다', () => {
+    const { room } = makeRoom();
+    fillRoom(room); // 9명 참
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    for (const id of ids.slice(0, -1)) expect(room.setReady(id, true)).toBeNull();
+    expect(room.inGame).toBe(false); // 아직 1명 미준비
+    expect(room.setReady(ids.at(-1)!, true)).toBeNull();
+    expect(room.inGame).toBe(true); // 마지막 1명까지 준비되자 자동 시작
+  });
+
+  it('정원 미달이면 전원 준비해도 시작되지 않는다', () => {
+    const { room } = makeRoom();
+    fillRoom(room, 5); // 6명뿐 (9인 모드 정원 미달)
+    const ids = Array.from({ length: 6 }, (_, i) => `u${i + 1}`);
+    for (const id of ids) expect(room.setReady(id, true)).toBeNull();
+    expect(room.inGame).toBe(false);
+  });
+
+  it('새 인원이 들어오면 기존 준비 상태가 초기화된다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    room.setReady('u1', true);
+    room.setReady('u2', true);
+    room.join({ id: 'u3', name: '유저3' }); // 새 인원 입장
+    expect(room.players.every((p) => !p.ready)).toBe(true);
+  });
+
+  it('방 설정이 바뀌면 준비 상태가 초기화된다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    room.setReady('u1', true);
+    room.setReady('u2', true);
+    room.updateSettings('u1', { mode: 7, personalSpeechSeconds: 120, discussionSeconds: 300 });
+    expect(room.players.every((p) => !p.ready)).toBe(true);
+  });
+
+  it('방에 없는 사람의 준비 요청은 거부된다', () => {
+    const { room } = makeRoom();
+    expect(room.setReady('ghost', true)).toBe('NOT_IN_ROOM');
+  });
 });
 
 describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {

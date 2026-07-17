@@ -108,6 +108,12 @@ export function registerHandlers(
       },
     );
 
+    socket.on(SOCKET_EVENTS.roomReady, (data: { ready?: boolean }, ack?: Ack) => {
+      const room = manager.roomOf(playerId);
+      const error = room ? room.setReady(playerId, !!data?.ready) : 'NOT_IN_ROOM';
+      ack?.(error ? { ok: false, error } : { ok: true });
+    });
+
     socket.on(SOCKET_EVENTS.roomStart, (_data: unknown, ack?: Ack) => {
       const room = manager.roomOf(playerId);
       const error = room ? room.startGame(playerId) : 'NOT_IN_ROOM';

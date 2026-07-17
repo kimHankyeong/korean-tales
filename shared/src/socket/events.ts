@@ -30,6 +30,8 @@ export const SOCKET_EVENTS = {
   roomSettings: 'room:settings',
   /** C→S: 진영 선호 선택 { faction: Faction | null } — 배정 보장 아님 */
   roomFactionPreference: 'room:factionPreference',
+  /** C→S (ack): 준비 토글 { ready: boolean } — 정원이 다 차고 전원 준비되면 자동 시작 */
+  roomReady: 'room:ready',
   /** C→S (ack): 방장 게임 시작 */
   roomStart: 'room:start',
   /** S→방 전체: 로비 상태 동기화 */
@@ -88,6 +90,8 @@ export interface RoomPlayerInfo {
   isHost: boolean;
   /** 계정 프로필 사진 URL (서버 상대 경로) — 없으면 기본 아바타 표시 */
   avatarUrl: string | null;
+  /** 준비 완료 여부 — 정원이 다 차고 전원 true가 되면 자동으로 게임이 시작된다 */
+  ready: boolean;
   // 진영 선호는 전략 정보라 로비에서도 서로 공개하지 않는다 — 본인 확인은 ack로
 }
 

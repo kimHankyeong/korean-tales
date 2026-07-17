@@ -65,12 +65,12 @@ export function LobbyScreen() {
     getSocket().emit(SOCKET_EVENTS.roomFactionPreference, { faction: value });
   }
 
-  async function startGame() {
+  async function toggleReady(nextReady: boolean) {
     setBusy(true);
     setError(null);
-    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomStart);
+    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomReady, { ready: nextReady });
     setBusy(false);
-    if (!ack.ok) setError(ack.error ?? '게임을 시작할 수 없어요.');
+    if (!ack.ok) setError(ack.error ?? '준비 상태를 바꿀 수 없어요.');
   }
 
   if (!room) {
@@ -118,21 +118,39 @@ export function LobbyScreen() {
   }
 
   const isHost = room.hostId === myId;
+  const me = room.players.find((p) => p.id === myId);
+  const myReady = me?.ready ?? false;
+  const readyCount = room.players.filter((p) => p.ready).length;
 
   return (
     <main className="flex h-screen flex-col gap-4 bg-slate-950 p-4 text-slate-100 md:flex-row">
       <section className="flex-1 rounded-xl border border-slate-700 bg-slate-900 p-4">
-        <h1 className="mb-2 text-sm font-bold text-amber-300">
+        <h1 className="mb-1 text-sm font-bold text-amber-300">
           방 코드 <span className="tracking-widest">{room.code}</span>
         </h1>
+        <p className="mb-2 text-xs text-slate-400">
+          {readyCount}/{room.settings.mode}명 준비 완료 — 정원이 차고 전원 준비되면 자동 시작돼요
+        </p>
         <ul aria-label="로비 플레이어 목록" className="space-y-1">
           {room.players.map((p) => (
             <li key={p.id} className="flex items-center gap-2 rounded-lg bg-slate-800/60 px-3 py-1.5 text-sm">
               <span>{p.name}</span>
               {p.isHost && <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300">방장</span>}
+              {p.ready && <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">준비 완료</span>}
             </li>
           ))}
         </ul>
+
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => void toggleReady(!myReady)}
+          className={`mt-3 w-full rounded-lg py-2 text-sm font-bold disabled:opacity-50 ${
+            myReady ? 'border border-emerald-500 text-emerald-300' : 'bg-amber-600 text-white'
+          }`}
+        >
+          {myReady ? '준비 취소' : '준비하기'}
+        </button>
 
         <p className="mt-3 mb-1 text-xs text-slate-400">진영 선호 (배정을 보장하지 않음)</p>
         <div className="flex gap-2">
@@ -200,17 +218,6 @@ export function LobbyScreen() {
             </button>
           ))}
         </div>
-
-        {isHost && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void startGame()}
-            className="mt-3 rounded-lg bg-amber-600 py-2 text-sm font-bold text-white disabled:opacity-50"
-          >
-            게임 시작
-          </button>
-        )}
       </aside>
     </main>
   );
