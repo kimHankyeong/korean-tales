@@ -41,9 +41,9 @@ services:
       # 쿠키 서명 시크릿 (선택) — Render가 배포 시 랜덤 값을 생성해 준다
       - key: COOKIE_SECRET
         generateValue: true
-      # 게스트 차단으로 확정되면 주석 해제 (requirements 9번 미정)
-      # - key: REQUIRE_AUTH
-      #   value: "true"
+      # 게스트 접속 차단 — 로그인(회원가입) 없이는 소켓 연결 불가
+      - key: REQUIRE_AUTH
+        value: "true"
     # ── 영구 디스크 (starter 플랜 이상에서만 지원 — free에서 켜면 블루프린트 오류) ──
     # disk:
     #   name: korean-tales-data

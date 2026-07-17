@@ -14,7 +14,7 @@ import { prisma } from './db';
 import { registerHandlers } from './socket/registerHandlers';
 
 const PORT = Number(process.env.PORT ?? 4000);
-// 게스트 허용 여부는 requirements 9번 미정 — 기본 허용, 확정 시 REQUIRE_AUTH=true
+// 게스트 접속 허용 여부 — 기본값 false(허용), REQUIRE_AUTH=true로 로그인 필수화
 const REQUIRE_AUTH = process.env.REQUIRE_AUTH === 'true';
 
 const auth = new AuthService(prisma);
