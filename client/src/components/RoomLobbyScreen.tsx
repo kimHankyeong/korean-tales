@@ -12,7 +12,6 @@ import {
   type RoomSettingsPayload,
 } from '@korean-tales/shared';
 import { emitWithAck, getSocket } from '../lib/socket';
-import { useAuthStore } from '../store/authStore';
 import { useRoomStore } from '../store/roomStore';
 import { BackButton } from './BackButton';
 import { SkillBookModal } from './SkillBookModal';
@@ -25,7 +24,9 @@ interface RoomAck {
 const FACTION_LABEL: Record<Faction, string> = { GOOD: '선', EVIL: '악', NEUTRAL: '중립' };
 
 export function RoomLobbyScreen() {
-  const myId = useAuthStore((s) => s.user?.id);
+  // 방의 플레이어 id는 계정 id가 아니라 소켓 id다(server registerHandlers.ts) —
+  // RoomLobbyScreen은 room:create/join 성공 후에만 렌더링되므로 이 시점엔 항상 연결돼 있다.
+  const myId = getSocket().id;
   const room = useRoomStore((s) => s.room)!;
   const leaveRoom = useRoomStore((s) => s.leaveRoom);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +35,14 @@ export function RoomLobbyScreen() {
   const [showSkillBook, setShowSkillBook] = useState(false);
 
   async function updateSettings(patch: Partial<RoomSettingsPayload>) {
-    await emitWithAck<RoomAck>(SOCKET_EVENTS.roomSettings, { ...room.settings, ...patch });
+    setBusy(true);
+    setError(null);
+    // 렌더 클로저의 room이 아니라 최신 스토어 값을 읽어야 한다 — 그렇지 않으면 설정을
+    // 연달아 클릭했을 때 나중 요청이 이전 응답 전의 값을 기준으로 앞선 변경을 덮어쓸 수 있다.
+    const settings = { ...useRoomStore.getState().room!.settings, ...patch };
+    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomSettings, settings);
+    setBusy(false);
+    if (!ack.ok) setError(ack.error ?? '설정을 바꿀 수 없어요.');
   }
 
   function chooseFaction(next: Faction) {
@@ -145,7 +153,7 @@ export function RoomLobbyScreen() {
             <button
               key={mode}
               type="button"
-              disabled={!isHost}
+              disabled={!isHost || busy}
               onClick={() => void updateSettings({ mode })}
               className={`flex-1 rounded-lg border py-1 text-sm ${room.settings.mode === mode ? 'border-amber-400 bg-amber-600/30' : 'border-slate-600'} disabled:opacity-50`}
             >
@@ -160,7 +168,7 @@ export function RoomLobbyScreen() {
             <button
               key={s}
               type="button"
-              disabled={!isHost}
+              disabled={!isHost || busy}
               onClick={() => void updateSettings({ personalSpeechSeconds: s })}
               className={`flex-1 rounded-lg border py-1 text-sm ${room.settings.personalSpeechSeconds === s ? 'border-amber-400 bg-amber-600/30' : 'border-slate-600'} disabled:opacity-50`}
             >
@@ -175,7 +183,7 @@ export function RoomLobbyScreen() {
             <button
               key={s}
               type="button"
-              disabled={!isHost}
+              disabled={!isHost || busy}
               onClick={() => void updateSettings({ discussionSeconds: s })}
               className={`flex-1 rounded-lg border py-1 text-sm ${room.settings.discussionSeconds === s ? 'border-amber-400 bg-amber-600/30' : 'border-slate-600'} disabled:opacity-50`}
             >

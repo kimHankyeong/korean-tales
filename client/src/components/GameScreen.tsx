@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react';
 import { SOCKET_EVENTS, type ClientGameAction } from '@korean-tales/shared';
 import * as api from '../lib/api';
-import { initBgm } from '../lib/bgm';
 import { resolveActivePrompt } from '../lib/gamePrompts';
 import { emitWithAck, getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
@@ -32,13 +31,13 @@ export function GameScreen() {
   const [showSkillBook, setShowSkillBook] = useState(false);
   const [flowerMode, setFlowerMode] = useState<'REVIVE' | 'DOOM' | null>(null);
 
-  useEffect(() => initBgm(useGameStore.getState().bgmVolume), []);
-
   // 로비 → 게임 진입 시 1회: 데모 잔여 상태 정리 + 계정 프로필 반영
   useEffect(() => {
     if (!user) return;
     store.resetForRealGame();
-    store.setMyId(user.id);
+    // 방/게임의 플레이어 id는 계정 id가 아니라 소켓 id다(server registerHandlers.ts) —
+    // 계정 id로 비교하면 currentSpeakerId 등과 절대 일치하지 않는다.
+    store.setMyId(getSocket().id ?? '');
     store.setMyProfile({ nickname: user.nickname, profileImageUrl: user.profileImageUrl });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);

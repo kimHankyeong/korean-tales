@@ -8,6 +8,7 @@ import { SOCKET_EVENTS } from '@korean-tales/shared';
 import { AuthScreen } from './components/AuthScreen';
 import { GameScreen } from './components/GameScreen';
 import { LobbyFlow } from './components/LobbyFlow';
+import { initBgm } from './lib/bgm';
 import { connectSocket, disconnectSocket } from './lib/socket';
 import { useAuthStore } from './store/authStore';
 import { useGameStore } from './store/gameStore';
@@ -24,6 +25,8 @@ export function AppRouter() {
 
   useEffect(() => {
     void checkSession();
+    // 로그인 화면부터 배경음악 시작 — 게임 시작 전까지는 아무 화면도 initBgm을 호출하지 않았음
+    initBgm(useGameStore.getState().bgmVolume);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
