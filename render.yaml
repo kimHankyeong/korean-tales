@@ -34,9 +34,10 @@ services:
         value: file:./dev.db # free 플랜: 임시 저장 (starter + 디스크 사용 시 file:/data/korean_tales.db)
       - key: UPLOADS_DIR
         value: ./uploads # free 플랜: 임시 저장 (starter + 디스크 사용 시 /data/uploads)
-      # 클라이언트 배포 도메인으로 CORS 제한 — 클라이언트 호스팅 주소로 교체할 것
+      # 클라이언트 배포 도메인으로 CORS 제한 — 아래 korean-tales-client 서비스의 실제 배포 URL과 일치해야 함
+      # (Render가 이름 충돌로 다른 URL을 배정했다면 대시보드에서 확인 후 이 값을 교체할 것)
       - key: CLIENT_ORIGIN
-        value: https://korean-tales.example.com
+        value: https://korean-tales-client.onrender.com
       # 쿠키 서명 시크릿 (선택) — Render가 배포 시 랜덤 값을 생성해 준다
       - key: COOKIE_SECRET
         generateValue: true
@@ -48,3 +49,20 @@ services:
     #   name: korean-tales-data
     #   mountPath: /data
     #   sizeGB: 1
+
+  - type: web
+    name: korean-tales-client
+    runtime: static
+    buildCommand: npm install && npm run build --workspace @korean-tales/client
+    staticPublishPath: client/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 22.23.1 # Node 22 LTS 고정 (CLAUDE.md의 Node 24 이슈 참고)
+      # 게임 서버(REST + Socket.io) 주소 — 위 korean-tales-server 서비스의 실제 배포 URL과 일치해야 함
+      - key: VITE_SERVER_URL
+        value: https://korean-tales-server.onrender.com
+    # SPA 라우팅 — 존재하지 않는 하위 경로는 모두 index.html로 라우팅
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
