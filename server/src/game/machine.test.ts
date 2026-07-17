@@ -297,18 +297,31 @@ describe('밤 페이즈 (requirements 4번)', () => {
     expect(player(actor, 'p4').skillUses['revival-flower']).toBe(1);
   });
 
-  it('도깨비 장난: 밤 킬이 무산되어 아무도 죽지 않는다 (차단 사실 비공개)', () => {
+  it('도깨비 보호 성공: 보호 대상이 그날 밤 킬 대상과 같으면 무산되어 아무도 죽지 않는다 (차단 사실 비공개, 스킬 영구 소모)', () => {
     const actor = startGame();
     toNight(actor);
-    actor.send({ type: 'DOKKAEBI_PRANK' });
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
     timeUp(actor); // → evilDiscussion
     timeUp(actor); // → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
     timeUp(actor); // → evilSkills
-    timeUp(actor); // → dawn: 장난으로 킬 무효
+    timeUp(actor); // → dawn: 보호 성공으로 킬 무효
     expect(player(actor, 'p5').alive).toBe(true);
     expect(actor.getSnapshot().context.pendingDeaths).toHaveLength(0);
-    expect(player(actor, 'p6').skillUses.prank).toBe(1); // 1회 소모
+    expect(player(actor, 'p6').skillUses.prank).toBe(1); // 보호 성공으로 1회 소모(이후 재사용 불가)
+  });
+
+  it('도깨비 보호 실패: 보호 대상이 킬 대상과 다르면 킬은 그대로 반영되고 스킬은 소모되지 않아 다음 밤에도 재사용 가능', () => {
+    const actor = startGame();
+    toNight(actor);
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' }); // p1을 보호했지만
+    timeUp(actor); // → evilDiscussion
+    timeUp(actor); // → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' }); // 실제 킬 대상은 p5
+    timeUp(actor); // → evilSkills
+    timeUp(actor); // → dawn: 보호 실패, 킬 반영
+    expect(player(actor, 'p5').alive).toBe(false);
+    expect(player(actor, 'p6').skillUses.prank ?? 0).toBe(0); // 소모되지 않음 — 다음 밤에도 사용 가능
   });
 });
 
@@ -387,13 +400,13 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     timeUp(actor); // → night
   }
 
-  it('도깨비 장난이 있던 밤: 킬은 무산되지만, 그 밤 지정한 길동무는 저승사자가 낮에 처형되면 그대로 동반 사망한다', () => {
+  it('도깨비 보호가 성공한 밤: 킬은 무산되지만, 그 밤 지정한 길동무는 저승사자가 낮에 처형되면 그대로 동반 사망한다', () => {
     const actor = startGame();
     skipElection(actor);
     toNight(actor);
 
-    // 밤 1: 장난 + 악 킬(p5 해태) + 저승사자 길동무 지정(p6 도깨비)
-    actor.send({ type: 'DOKKAEBI_PRANK' });
+    // 밤 1: 도깨비가 해태(p5)를 보호 + 악 킬(p5) + 저승사자 길동무 지정(p6 도깨비)
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
     timeUp(actor); // → evilDiscussion
     timeUp(actor); // → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
@@ -401,7 +414,7 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' });
     timeUp(actor); // → dawn
 
-    // 새벽: 장난으로 킬 무효 — "사망자 없음" (차단 사실 비공개)
+    // 새벽: 보호 성공으로 킬 무효 — "사망자 없음" (차단 사실 비공개)
     expect(player(actor, 'p5').alive).toBe(true);
     expect(actor.getSnapshot().context.pendingDeaths).toHaveLength(0);
 
@@ -447,28 +460,31 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     expect(revived.faction).toBe('NEUTRAL');
   });
 
-  it('부활자의 이미 사용한 1회성 스킬은 소모된 상태로 유지된다 (도깨비 장난)', () => {
+  it('부활자의 이미 사용한 1회성 스킬은 소모된 상태로 유지된다 (도깨비 장난 — 보호 성공 후)', () => {
     const actor = startGame();
     skipElection(actor);
     toNight(actor);
 
-    // 밤 1: 도깨비가 장난 사용 (킬 없음)
-    actor.send({ type: 'DOKKAEBI_PRANK' });
-    timeUp(actor);
-    timeUp(actor);
-    timeUp(actor);
-    timeUp(actor); // → 2일차 아침
+    // 밤 1: 도깨비가 p1을 보호 → 악이 p1을 킬 시도 → 보호 성공, 장난 영구 소모
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' });
+    timeUp(actor); // → evilDiscussion
+    timeUp(actor); // → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p2', targetId: 'p1' });
+    timeUp(actor); // → evilSkills
+    timeUp(actor); // → 2일차 아침: 보호 성공
+    expect(player(actor, 'p1').alive).toBe(true);
+    expect(player(actor, 'p6').skillUses.prank).toBe(1);
     actor.send({ type: 'FLOWER_PASS' });
     toNight(actor);
 
-    // 밤 2: 악이 도깨비(p6)를 킬 — 장난은 이미 소모되어 재사용 불가
-    actor.send({ type: 'DOKKAEBI_PRANK' }); // guard가 차단해야 함
-    expect(actor.getSnapshot().context.prankUsedTonight).toBe(false);
+    // 밤 2: 장난은 이미 소모되어 재사용 불가 — guard가 차단, 도깨비(p6)는 무방비로 킬당함
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p6' }); // guard가 차단해야 함
+    expect(actor.getSnapshot().context.dokkaebiProtectTargetId).toBeNull();
     timeUp(actor);
     timeUp(actor);
-    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p6' });
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p2', targetId: 'p6' });
     timeUp(actor);
-    timeUp(actor); // → 3일차 새벽: p6 사망
+    timeUp(actor); // → 3일차 새벽: p6 사망 (보호 없음)
     expect(player(actor, 'p6').alive).toBe(false);
 
     // 부활꽃으로 부활 — 사용한 장난은 복구되지 않는다
@@ -479,8 +495,8 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
 
     // 그 밤에도 장난 재사용 불가
     toNight(actor);
-    actor.send({ type: 'DOKKAEBI_PRANK' });
-    expect(actor.getSnapshot().context.prankUsedTonight).toBe(false);
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' });
+    expect(actor.getSnapshot().context.dokkaebiProtectTargetId).toBeNull();
   });
 });
 

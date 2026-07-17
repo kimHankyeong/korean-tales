@@ -38,7 +38,7 @@ describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', 
     expect(isActionAllowed('p1', { type: 'HAETAE_INVESTIGATE', targetId: 'p5' }, snapshot())).toBe(false);
     expect(isActionAllowed('p4', { type: 'FLOWER_DOOM', targetId: 'p1' }, snapshot())).toBe(true);
     expect(isActionAllowed('p6', { type: 'FLOWER_DOOM', targetId: 'p1' }, snapshot())).toBe(false);
-    expect(isActionAllowed('p6', { type: 'DOKKAEBI_PRANK' }, snapshot())).toBe(true);
+    expect(isActionAllowed('p6', { type: 'DOKKAEBI_PRANK', targetId: 'p1' }, snapshot())).toBe(true);
     expect(isActionAllowed('p3', { type: 'GUMIHO_SEDUCE' }, snapshot())).toBe(true);
     expect(isActionAllowed('p1', { type: 'JEOSEUNG_COMPANION', targetId: 'p5' }, snapshot())).toBe(true);
     expect(isActionAllowed('p2', { type: 'JEOSEUNG_COMPANION', targetId: 'p5' }, snapshot())).toBe(false);

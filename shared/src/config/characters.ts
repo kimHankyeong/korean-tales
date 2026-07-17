@@ -193,16 +193,19 @@ export const CHARACTERS: readonly GameCharacter[] = [
       {
         id: 'prank',
         name: '도깨비 장난',
+        // 보호 성공 전까지 매일 밤 재사용 가능 — 실제 영구 소모 판정은 서버가 "보호 성공" 시점에만 처리
         uses: 1,
         isPassive: false,
         timing: 'NIGHT',
         canForgo: false,
-        effectKind: 'BLOCK_EVIL_NIGHT_KILL',
+        effectKind: 'PROTECT_FROM_NIGHT_KILL',
+        target: { count: 1, scope: 'ALIVE' },
         decisionSeconds: TIMER_CONFIG.nightDokkaebiDecision,
-        description: '그날 밤 악 진영의 킬을 무산시킨다.',
+        description: '매일 밤 보호할 생존자 1인을 지정한다. 그날 밤 악 진영의 킬 대상이 보호 대상과 같으면 그 사람은 죽지 않는다.',
         notes: [
+          '보호에 한 번이라도 성공하면 이후 다시 사용할 수 없다. 성공한 적 없다면 매일 밤 대상을 다시 지정해 재사용할 수 있다.',
           '아침의 자청비 멸망꽃 킬은 막지 못한다.',
-          '차단 사실은 악 진영에게 바로 알리지 않고, 다음날 아침 전체에게 "사망자 없음"으로만 표시.',
+          '보호 성공 여부와 무관하게 차단 사실은 악 진영에게 바로 알리지 않고, 다음날 아침 전체에게 "사망자 없음"으로만 표시.',
         ],
       },
     ],

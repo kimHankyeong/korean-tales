@@ -186,9 +186,11 @@ export const gameMachine = setup({
       const target = getPlayer(context.players, event.targetId);
       return !!haetae?.alive && !!target?.alive && target.id !== haetae.id;
     },
-    validPrank: ({ context }) => {
+    validPrank: ({ context, event }) => {
+      if (event.type !== 'DOKKAEBI_PRANK') return false;
       const dokkaebi = context.players.find((p) => p.characterId === 'dokkaebi');
-      return !!dokkaebi?.alive && canUseSkill(dokkaebi, 'prank') && !context.prankUsedTonight;
+      const target = getPlayer(context.players, event.targetId);
+      return !!dokkaebi?.alive && canUseSkill(dokkaebi, 'prank') && !!target?.alive;
     },
     validEvilVote: ({ context, event }) => {
       if (event.type !== 'EVIL_KILL_VOTE') return false;
@@ -242,7 +244,12 @@ export const gameMachine = setup({
       if (event.type !== 'CANDIDACY_APPLY') return {};
       return { candidates: [...context.candidates, event.playerId] };
     }),
-    initAppealQueue: assign(({ context }) => ({ appealQueue: [...context.candidates] })),
+    // 어필 발언 순서: 출마자 중 배정 번호 오름차순(앞 번호부터 정순, 7번 섹션)
+    initAppealQueue: assign(({ context }) => ({
+      appealQueue: [...context.candidates].sort(
+        (a, b) => (getPlayer(context.players, a)?.seat ?? 0) - (getPlayer(context.players, b)?.seat ?? 0),
+      ),
+    })),
     shiftAppeal: assign(({ context }) => ({ appealQueue: context.appealQueue.slice(1) })),
     clearVotes: assign({ votes: {} }),
     registerVote: assign(({ context, event }) => {
@@ -373,18 +380,21 @@ export const gameMachine = setup({
     }),
 
     /* ── 밤 ── */
-    clearNightState: assign({ evilVotes: {}, lastInvestigation: null, skipVotes: [] }),
+    clearNightState: assign({
+      evilVotes: {},
+      lastInvestigation: null,
+      skipVotes: [],
+      dokkaebiProtectTargetId: null,
+    }),
     recordInvestigation: assign(({ context, event }) => {
       if (event.type !== 'HAETAE_INVESTIGATE') return {};
       const target = getPlayer(context.players, event.targetId)!;
       return { lastInvestigation: { targetId: target.id, result: investigate(target) } };
     }),
-    usePrank: assign(({ context }) => {
-      const dokkaebi = context.players.find((p) => p.characterId === 'dokkaebi')!;
-      return {
-        players: markSkillUsed(context.players, dokkaebi.id, 'prank'),
-        prankUsedTonight: true,
-      };
+    // 보호 대상만 기록 — 실제 스킬 소모는 새벽에 보호 성공 여부가 확정된 뒤 처리(processDawn)
+    setDokkaebiProtection: assign(({ event }) => {
+      if (event.type !== 'DOKKAEBI_PRANK') return {};
+      return { dokkaebiProtectTargetId: event.targetId };
     }),
     registerEvilVote: assign(({ context, event }) => {
       if (event.type !== 'EVIL_KILL_VOTE') return {};
@@ -409,13 +419,13 @@ export const gameMachine = setup({
         seduceNextDay: true,
       };
     }),
-    // 새벽 처리: 일차 증가, 연민 예약 부활, 밤 킬 판정(장난이면 무효)
+    // 새벽 처리: 일차 증가, 연민 예약 부활, 밤 킬 판정(도깨비 보호 성공이면 무효 + 스킬 영구 소모)
     applyDawn: assign(({ context }) => {
       const result = processDawn({
         players: context.players,
         scheduledRevivals: context.scheduledRevivals,
         nightKillTargetId: context.nightKillTargetId,
-        prankUsedTonight: context.prankUsedTonight,
+        dokkaebiProtectTargetId: context.dokkaebiProtectTargetId,
       });
       return {
         day: context.day + 1,
@@ -423,7 +433,7 @@ export const gameMachine = setup({
         pendingDeaths: [...context.pendingDeaths, ...result.pendingDeaths],
         scheduledRevivals: result.scheduledRevivals,
         nightKillTargetId: null,
-        prankUsedTonight: false,
+        dokkaebiProtectTargetId: null,
         votes: {},
         tieCandidates: [],
       };
@@ -503,7 +513,7 @@ export const gameMachine = setup({
     executionTargetId: null,
     evilVotes: {},
     nightKillTargetId: null,
-    prankUsedTonight: false,
+    dokkaebiProtectTargetId: null,
     seduceNextDay: false,
     companionTargetId: null,
     lastInvestigation: null,
@@ -740,7 +750,7 @@ export const gameMachine = setup({
           entry: 'clearNightState',
           on: {
             HAETAE_INVESTIGATE: { guard: 'validInvestigate', actions: 'recordInvestigation' },
-            DOKKAEBI_PRANK: { guard: 'validPrank', actions: 'usePrank' },
+            DOKKAEBI_PRANK: { guard: 'validPrank', actions: 'setDokkaebiProtection' },
             TIME_UP: { target: 'evilDiscussion' },
           },
         },

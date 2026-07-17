@@ -26,7 +26,7 @@ export type GameEvent =
   | { type: 'FLOWER_PASS' }
   /* 밤 — 선 진영 */
   | { type: 'HAETAE_INVESTIGATE'; targetId: string }
-  | { type: 'DOKKAEBI_PRANK' }
+  | { type: 'DOKKAEBI_PRANK'; targetId: string }
   /* 밤 — 악 진영 */
   | { type: 'EVIL_KILL_VOTE'; voterId: string; targetId: string }
   | { type: 'JEOSEUNG_COMPANION'; targetId: string }

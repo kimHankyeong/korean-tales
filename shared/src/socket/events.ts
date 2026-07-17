@@ -44,6 +44,8 @@ export const SOCKET_EVENTS = {
   gameAction: 'game:action',
   /** S→해태 본인: 투사 결과 */
   gameInvestigation: 'game:investigation',
+  /** S→자청비 본인: 부활꽃 대상 후보 (그날 밤 악 진영 킬 사망자만) */
+  gameFlowerOptions: 'game:flowerOptions',
   /** S→방 전체: 게임 종료 + 역할 전체 공개 */
   gameOver: 'game:over',
 
@@ -140,6 +142,14 @@ export interface PublicGameState {
 export interface InvestigationPayload {
   targetId: string;
   result: InvestigationResult;
+}
+
+/**
+ * 자청비 본인에게만 전송 — 부활꽃 대상 후보 (5번 섹션: 그날 밤 악 진영 킬 사망자만,
+ * 동반사망자·투표 처형자는 대상 아님). 빈 배열이면 부활 가능한 대상 없음(멸망꽃/패스만 가능).
+ */
+export interface FlowerOptionsPayload {
+  revivableTargetIds: string[];
 }
 
 /** 게임 종료 시에만 역할 전체 공개 + 개인별 승패 귀속 */

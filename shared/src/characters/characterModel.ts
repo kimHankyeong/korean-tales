@@ -62,7 +62,7 @@ export type SkillEffectKind =
   | 'REVIVE'                 // 부활꽃
   | 'EXECUTE_IMMEDIATELY'    // 멸망꽃
   | 'INVESTIGATE'            // 투사
-  | 'BLOCK_EVIL_NIGHT_KILL'  // 도깨비 장난
+  | 'PROTECT_FROM_NIGHT_KILL' // 도깨비 장난: 매일 밤 보호 대상 지정, 보호 성공 시 영구 소모
   | 'TAKE_ALONG_ON_DEATH'    // 피 맺힌 유서(동귀어진)
   | 'AUTO_REVIVE'            // 연민: 까치선비 자동 부활
   | 'REVIVE_BENEFICIARY';    // 까치의 보은: 부활 대상 + 중립 전환

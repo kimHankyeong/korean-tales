@@ -4,7 +4,17 @@
  */
 
 import { create } from 'zustand';
-import type { PublicPlayerState } from '@korean-tales/shared';
+import type {
+  ChatMessagePayload,
+  FlowerOptionsPayload,
+  GameOverPayload,
+  GameRolePayload,
+  InvestigationPayload,
+  PublicGameState,
+  PublicPlayerState,
+  SurrenderProgressPayload,
+  TimerSyncPayload,
+} from '@korean-tales/shared';
 import type { ChatMessageView } from '../components/ChatWindow';
 import type { CountdownTarget } from '../components/CountdownText';
 import { applyBgmVolume, loadBgmVolume } from '../lib/bgm';
@@ -27,6 +37,32 @@ export interface GameUiState {
   myProfile: { nickname: string; profileImageUrl: string | null };
   /** 배경음악 음량 (0~1) — localStorage에 유지 */
   bgmVolume: number;
+  /** 서버 공개 게임 상태 원본 — resolveActivePrompt가 참고 (게임 미시작 시 null) */
+  publicState: PublicGameState | null;
+  /** 본인 캐릭터 배정 — game:role은 본인 소켓에만 전송됨 */
+  role: GameRolePayload | null;
+  /** 게임 종료 결과 — game:over 수신 시 역할 전체 공개 */
+  gameOverResult: GameOverPayload | null;
+  /** 해태 본인에게만 오는 최근 투사 결과 */
+  lastInvestigation: InvestigationPayload | null;
+  /** 같은 팀에게만 오는 투항 진행 상황 */
+  surrenderProgress: SurrenderProgressPayload | null;
+  /** 자청비 본인에게만 오는 부활꽃 대상 후보 */
+  flowerOptions: FlowerOptionsPayload | null;
+
+  setMyId(id: string): void;
+  setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
+  /** 로비→게임 진입 시 데모/이전 게임 잔여 상태 제거 */
+  resetForRealGame(): void;
+  applyRole(payload: GameRolePayload): void;
+  applyGameState(payload: PublicGameState): void;
+  applyGameOver(payload: GameOverPayload): void;
+  applyChatMessage(payload: ChatMessagePayload): void;
+  applyTimerSync(payload: TimerSyncPayload): void;
+  clearTimer(): void;
+  applyInvestigation(payload: InvestigationPayload): void;
+  applySurrenderProgress(payload: SurrenderProgressPayload | null): void;
+  applyFlowerOptions(payload: FlowerOptionsPayload | null): void;
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -65,6 +101,68 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   personalSpeechSeconds: 80,
   myProfile: { nickname: '달래', profileImageUrl: null },
   bgmVolume: loadBgmVolume(),
+  publicState: null,
+  role: null,
+  gameOverResult: null,
+  lastInvestigation: null,
+  surrenderProgress: null,
+  flowerOptions: null,
+
+  setMyId: (id) => set({ myId: id }),
+
+  setMyProfile: (profile) => set({ myProfile: profile }),
+
+  resetForRealGame: () =>
+    set({
+      publicState: null,
+      role: null,
+      gameOverResult: null,
+      lastInvestigation: null,
+      surrenderProgress: null,
+      flowerOptions: null,
+      players: [],
+      messages: [],
+      condemnedId: null,
+      timer: null,
+    }),
+
+  applyRole: (role) => set({ role }),
+
+  applyGameState: (publicState) =>
+    set({
+      publicState,
+      phase: publicState.phase.startsWith('night') ? 'NIGHT' : 'DAY',
+      players: publicState.players,
+      condemnedId: publicState.phase === 'day.finalPlea' ? publicState.executionTargetId : null,
+    }),
+
+  applyGameOver: (gameOverResult) => set({ gameOverResult }),
+
+  applyChatMessage: (payload) =>
+    set((state) => ({
+      messages: [
+        ...state.messages,
+        {
+          id: messageId(),
+          kind: 'CHAT',
+          senderName: payload.channel === 'EVIL' ? `${payload.senderName} (악)` : payload.senderName,
+          text: payload.text,
+        },
+      ],
+    })),
+
+  applyTimerSync: (payload) =>
+    set({
+      timer: { label: payload.phaseKey, endsAt: payload.endsAt, serverNow: payload.serverNow },
+    }),
+
+  clearTimer: () => set({ timer: null }),
+
+  applyInvestigation: (lastInvestigation) => set({ lastInvestigation }),
+
+  applySurrenderProgress: (surrenderProgress) => set({ surrenderProgress }),
+
+  applyFlowerOptions: (flowerOptions) => set({ flowerOptions }),
 
   setPhase: (phase) => {
     set({ phase });

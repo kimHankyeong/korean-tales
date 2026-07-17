@@ -1,6 +1,7 @@
 /**
  * 공용 UI 데모 플레이그라운드 — 서버 연동 전, 목 데이터로 각 컴포넌트가
- * 독립적으로 동작하는지 확인하는 화면. (소켓 연동은 다음 세션)
+ * 독립적으로 동작하는지 확인하는 화면. 프로덕션 진입점(AppRouter)에는 연결되지 않으며,
+ * 컴포넌트 단독 확인이 필요할 때 client/src/main.tsx에서 임시로 렌더링해서 쓴다.
  *
  * 좌측: 채팅창(낮/밤 표시·카운트다운·발언 순서·최후의 변론 모드)
  * 우측: 데모 제어판 — 투표 창/스킬 창/포기 포함 스킬 창 열기, 페이즈 전환 등
@@ -8,15 +9,15 @@
 
 import { useEffect, useState } from 'react';
 import { CHARACTERS, type GameOverPayload } from '@korean-tales/shared';
-import { ChatWindow } from './components/ChatWindow';
-import { GameOverScreen } from './components/GameOverScreen';
-import { MyPage } from './components/MyPage';
-import { PlayerListPanel } from './components/PlayerListPanel';
-import { SelectionPanel, type SelectionTarget } from './components/SelectionPanel';
-import { ServerWakeNotice } from './components/ServerWakeNotice';
-import { SkillBookModal } from './components/SkillBookModal';
-import { initBgm } from './lib/bgm';
-import { useGameStore } from './store/gameStore';
+import { initBgm } from '../lib/bgm';
+import { useGameStore } from '../store/gameStore';
+import { ChatWindow } from './ChatWindow';
+import { GameOverScreen } from './GameOverScreen';
+import { MyPage } from './MyPage';
+import { PlayerListPanel } from './PlayerListPanel';
+import { SelectionPanel, type SelectionTarget } from './SelectionPanel';
+import { ServerWakeNotice } from './ServerWakeNotice';
+import { SkillBookModal } from './SkillBookModal';
 
 type PanelKind = 'NONE' | 'VOTE' | 'SKILL' | 'SKILL_FORGO';
 
@@ -38,7 +39,7 @@ function mockGameOver(players: { id: string; alive: boolean }[]): GameOverPayloa
   };
 }
 
-export default function App() {
+export default function DemoPlayground() {
   const store = useGameStore();
   const [panel, setPanel] = useState<PanelKind>('NONE');
   const [nextSeat, setNextSeat] = useState(1);

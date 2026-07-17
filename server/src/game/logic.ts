@@ -257,22 +257,28 @@ export function investigate(target: GamePlayer): InvestigationResult {
 
 export interface NightKillResolution {
   killedPlayerId: string | null;
-  /** 아침 전체 공지 — 장난 차단이든 킬 없음이든 동일하게 NO_DEATH("사망자 없음") */
+  /** 아침 전체 공지 — 보호 성공이든 킬 없음이든 동일하게 NO_DEATH("사망자 없음") */
   announcement: 'DEATH' | 'NO_DEATH';
+  /** 도깨비 보호가 이번 판정에서 실제로 킬을 막았는지 — 성공하면 스킬이 영구 소모된다 */
+  protectionSucceeded: boolean;
 }
 
-/** 1) 밤 킬 판정 — 도깨비 장난이 사용된 밤이면 킬 무효 */
+/** 1) 밤 킬 판정 — 도깨비가 지정한 보호 대상이 킬 대상과 같으면 보호 성공(킬 무효) */
 export function resolveNightKillOutcome(
   players: readonly GamePlayer[],
   nightKillTargetId: string | null,
-  prankUsedTonight: boolean,
+  protectTargetId: string | null,
 ): NightKillResolution {
-  if (nightKillTargetId === null) return { killedPlayerId: null, announcement: 'NO_DEATH' };
-  // 장난 차단 — 악 진영에게 따로 알리지 않으며, 공지는 킬 없음과 구분 불가
-  if (prankUsedTonight) return { killedPlayerId: null, announcement: 'NO_DEATH' };
+  if (nightKillTargetId === null) {
+    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false };
+  }
   const target = getPlayer(players, nightKillTargetId);
-  if (!target?.alive) return { killedPlayerId: null, announcement: 'NO_DEATH' };
-  return { killedPlayerId: target.id, announcement: 'DEATH' };
+  if (!target?.alive) return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false };
+  // 보호 성공 — 악 진영에게 따로 알리지 않으며, 공지는 킬 없음과 구분 불가
+  if (protectTargetId !== null && protectTargetId === nightKillTargetId) {
+    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: true };
+  }
+  return { killedPlayerId: target.id, announcement: 'DEATH', protectionSucceeded: false };
 }
 
 /** 4) 멸망꽃 사망 → 동귀어진류(피 맺힌 유서) 봉인 판정 — sealedByDeathCauses 기반 */
@@ -440,14 +446,14 @@ export interface DawnResult {
 /**
  * 새벽에 수행되는 일괄 처리:
  * 1) 연민 예약 부활 — 부활한 까치선비는 진영이 NEUTRAL로 전환 (convertsToFactionOnRevive)
- * 2) 밤 킬 판정 — 도깨비 장난 사용 밤이면 무효("사망자 없음"), 아니면 즉시 사망 반영.
- *    단 사망 트리거는 자청비 꽃 단계 이후에 처리하므로 pendingDeaths에 applied 상태로 적재.
+ * 2) 밤 킬 판정 — 도깨비 보호 대상이 킬 대상과 같으면 무효("사망자 없음") + 도깨비 장난 영구 소모,
+ *    아니면 즉시 사망 반영. 단 사망 트리거는 자청비 꽃 단계 이후에 처리하므로 pendingDeaths에 applied 상태로 적재.
  */
 export function processDawn(input: {
   players: GamePlayer[];
   scheduledRevivals: string[];
   nightKillTargetId: string | null;
-  prankUsedTonight: boolean;
+  dokkaebiProtectTargetId: string | null;
 }): DawnResult {
   let players = input.players.map((p) => ({ ...p, skillUses: { ...p.skillUses } }));
 
@@ -462,14 +468,18 @@ export function processDawn(input: {
     });
   }
 
-  // 2) 밤 킬 판정 — 도깨비 장난이 사용된 밤이면 무효 ("사망자 없음", 차단 사실 비공개)
+  // 2) 밤 킬 판정 — 도깨비 보호가 성공했으면 무효 ("사망자 없음", 차단 사실 비공개) + 스킬 영구 소모
   const pendingDeaths: PendingDeath[] = [];
-  const killOutcome = resolveNightKillOutcome(players, input.nightKillTargetId, input.prankUsedTonight);
+  const killOutcome = resolveNightKillOutcome(players, input.nightKillTargetId, input.dokkaebiProtectTargetId);
   if (killOutcome.killedPlayerId !== null) {
     players = players.map((p) =>
       p.id === killOutcome.killedPlayerId ? { ...p, alive: false } : p,
     );
     pendingDeaths.push({ playerId: killOutcome.killedPlayerId, cause: 'EVIL_NIGHT_KILL', applied: true });
+  }
+  if (killOutcome.protectionSucceeded) {
+    const dokkaebi = players.find((p) => p.characterId === 'dokkaebi');
+    if (dokkaebi) players = markSkillUsed(players, dokkaebi.id, 'prank');
   }
 
   return { players, pendingDeaths, scheduledRevivals: [] };

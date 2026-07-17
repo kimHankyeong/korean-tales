@@ -27,6 +27,41 @@ export async function fetchMe(): Promise<ProfileUser | null> {
   return ((await response.json()) as { user: ProfileUser }).user;
 }
 
+export async function signup(input: {
+  email: string;
+  password: string;
+  nickname: string;
+}): Promise<{ ok: true; user: ProfileUser } | { ok: false; error: string }> {
+  const response = await request('/auth/signup', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json()) as { user?: ProfileUser; error?: string };
+  return response.ok && body.user
+    ? { ok: true, user: body.user }
+    : { ok: false, error: body.error ?? 'UNKNOWN' };
+}
+
+export async function login(input: {
+  email: string;
+  password: string;
+}): Promise<{ ok: true; user: ProfileUser } | { ok: false; error: string }> {
+  const response = await request('/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = (await response.json()) as { user?: ProfileUser; error?: string };
+  return response.ok && body.user
+    ? { ok: true, user: body.user }
+    : { ok: false, error: body.error ?? 'UNKNOWN' };
+}
+
+export async function logout(): Promise<void> {
+  await request('/auth/logout', { method: 'POST' });
+}
+
 export async function updateNickname(
   nickname: string,
 ): Promise<{ ok: true; user: ProfileUser } | { ok: false; error: string }> {

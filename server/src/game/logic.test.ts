@@ -138,18 +138,30 @@ describe('조언자 선출 투표 판정 — resolveElectionVote (requirements 7
 });
 
 describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
-  it('도깨비 장난: 밤 킬 무효 — 공지는 킬 없음과 동일한 "사망자 없음" (차단 비공개)', () => {
+  it('도깨비 보호 성공: 밤 킬 무효 — 공지는 킬 없음과 동일한 "사망자 없음" (차단 비공개)', () => {
     const players = makePlayers();
-    const blocked = resolveNightKillOutcome(players, 'p5', true);
-    const noKill = resolveNightKillOutcome(players, null, false);
-    expect(blocked).toEqual({ killedPlayerId: null, announcement: 'NO_DEATH' });
-    expect(blocked).toEqual(noKill); // 악 진영이 공지로 차단 여부를 구분할 수 없어야 함
+    const protectedOutcome = resolveNightKillOutcome(players, 'p5', 'p5');
+    const noKill = resolveNightKillOutcome(players, null, null);
+    expect(protectedOutcome).toEqual({
+      killedPlayerId: null,
+      announcement: 'NO_DEATH',
+      protectionSucceeded: true,
+    });
+    // 악 진영이 공지(킬 대상 여부·announcement)로 차단 여부를 구분할 수 없어야 함
+    expect(protectedOutcome.killedPlayerId).toBe(noKill.killedPlayerId);
+    expect(protectedOutcome.announcement).toBe(noKill.announcement);
   });
 
-  it('장난이 없으면 밤 킬은 정상 반영된다', () => {
-    expect(resolveNightKillOutcome(makePlayers(), 'p5', false)).toEqual({
+  it('보호 대상이 킬 대상과 다르면(또는 미지정이면) 밤 킬은 정상 반영되고 보호는 실패로 기록된다', () => {
+    expect(resolveNightKillOutcome(makePlayers(), 'p5', null)).toEqual({
       killedPlayerId: 'p5',
       announcement: 'DEATH',
+      protectionSucceeded: false,
+    });
+    expect(resolveNightKillOutcome(makePlayers(), 'p5', 'p6')).toEqual({
+      killedPlayerId: 'p5',
+      announcement: 'DEATH',
+      protectionSucceeded: false,
     });
   });
 

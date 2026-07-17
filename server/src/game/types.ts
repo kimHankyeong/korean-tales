@@ -92,8 +92,8 @@ export interface GameContext {
   /* 밤 */
   evilVotes: Record<string, string>;
   nightKillTargetId: string | null;
-  /** 도깨비 장난 사용된 밤 — 새벽 킬 무효 */
-  prankUsedTonight: boolean;
+  /** 도깨비가 그날 밤 지정한 보호 대상 — 밤마다 재지정, 새벽 처리 후 초기화 */
+  dokkaebiProtectTargetId: string | null;
   /** 구미호 유혹 — 다음날 낮 투표 스킵 */
   seduceNextDay: boolean;
   /** 저승사자가 지정해 둔 길동무 (재지정 시 갱신, 사망 시 소모) */

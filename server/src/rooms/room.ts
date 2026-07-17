@@ -260,6 +260,17 @@ export class Room {
     }
     this.lastInvestigation = investigation;
 
+    // 자청비 부활꽃 대상 후보 — 그날 밤 악 진영 킬 사망자만 (본인에게만, 5번 섹션)
+    if (phasePath(snapshot.value) === 'day.flowerDecision') {
+      const jacheongbi = snapshot.context.players.find((p) => p.characterId === 'jacheongbi');
+      if (jacheongbi?.alive) {
+        const revivableTargetIds = snapshot.context.pendingDeaths
+          .filter((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied)
+          .map((d) => d.playerId);
+        this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+      }
+    }
+
     this.broadcastPublicState(snapshot);
 
     // 게임 종료 — 이때만 역할 전체 공개 + 개인별 승패 귀속 (중립은 생존 시 승리 팀 합류)
