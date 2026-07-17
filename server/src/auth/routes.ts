@@ -10,11 +10,15 @@ import { AuthService, SESSION_TTL_MS } from './service';
 export const SESSION_COOKIE = 'kt_session';
 
 function setSessionCookie(reply: FastifyReply, token: string): void {
+  const isProduction = process.env.NODE_ENV === 'production';
   reply.setCookie(SESSION_COOKIE, token, {
     httpOnly: true, // JS 접근 불가 — XSS로 토큰 탈취 방지
-    sameSite: 'lax',
+    // 배포 환경은 client/server가 서로 다른 오리진(Render 서브도메인)이라 크로스 사이트 요청 —
+    // SameSite=Lax는 크로스 사이트 XHR/소켓 요청에 쿠키를 실어 보내지 않아 로그인 직후 소켓
+    // 핸드셰이크가 UNAUTHORIZED로 거부된다. None은 Secure 필수라 로컬 개발(http)에서는 Lax 유지.
+    sameSite: isProduction ? 'none' : 'lax',
     path: '/',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction,
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   });
 }
