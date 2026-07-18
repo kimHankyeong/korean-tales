@@ -4,7 +4,6 @@
  */
 
 import Fastify, { type FastifyInstance } from 'fastify';
-import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import { registerAuthRoutes } from './auth/routes';
 import type { AuthService } from './auth/service';
@@ -32,15 +31,8 @@ export async function createApp(
   const app = Fastify();
   const uploadsDir = options.uploadsDir ?? process.env.UPLOADS_DIR ?? './uploads';
 
-  await app.register(cookie, {
-    // 선택: 쿠키 서명 시크릿 — 세션 토큰 자체가 불투명 랜덤 값이라 필수는 아니지만,
-    // 설정하면 쿠키 변조 감지가 한 겹 추가된다 (.env.example의 COOKIE_SECRET)
-    secret: process.env.COOKIE_SECRET,
-  });
-  await app.register(cors, {
-    origin: corsOrigin(),
-    credentials: true, // httpOnly 세션 쿠키 전송 허용
-  });
+  // Authorization 헤더로 인증하므로 쿠키 플러그인/CORS credentials가 필요 없다
+  await app.register(cors, { origin: corsOrigin() });
 
   registerAuthRoutes(app, auth);
   registerProfileRoutes(app, auth, { uploadsDir });

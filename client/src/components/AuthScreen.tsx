@@ -33,7 +33,7 @@ export function AuthScreen() {
       mode === 'LOGIN' ? await login({ email, password }) : await signup({ email, password, nickname });
     setBusy(false);
     if (result.ok) {
-      signIn(result.user);
+      signIn(result.user, result.token);
     } else {
       setError(ERROR_MESSAGES[result.error] ?? UNKNOWN_ERROR_MESSAGE);
     }

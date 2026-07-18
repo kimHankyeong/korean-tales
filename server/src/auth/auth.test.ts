@@ -12,7 +12,6 @@ import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../app';
 import { AuthService, SESSION_TTL_MS } from './service';
-import { SESSION_COOKIE } from './routes';
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -99,10 +98,10 @@ describe('AuthService (requirements 11번)', () => {
   });
 });
 
-describe('REST API — httpOnly 세션 쿠키', () => {
-  let cookieValue: string;
+describe('REST API — Bearer 토큰 세션', () => {
+  let token: string;
 
-  it('POST /auth/signup: 201 + httpOnly 세션 쿠키 발급 (가입 즉시 로그인)', async () => {
+  it('POST /auth/signup: 201 + 세션 토큰 발급 (가입 즉시 로그인)', async () => {
     const response = await app.inject({
       method: 'POST',
       url: '/auth/signup',
@@ -111,18 +110,15 @@ describe('REST API — httpOnly 세션 쿠키', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json().user.nickname).toBe('바우');
     expect(response.json().user.passwordHash).toBeUndefined(); // 해시 비노출
-
-    const setCookie = response.headers['set-cookie'] as string;
-    expect(setCookie).toContain(`${SESSION_COOKIE}=`);
-    expect(setCookie.toLowerCase()).toContain('httponly');
-    cookieValue = setCookie.split(';')[0]!.split('=')[1]!;
+    expect(typeof response.json().token).toBe('string');
+    token = response.json().token as string;
   });
 
-  it('GET /auth/me: 쿠키로 본인 정보 조회, 없으면 401', async () => {
+  it('GET /auth/me: Authorization 헤더로 본인 정보 조회, 없으면 401', async () => {
     const me = await app.inject({
       method: 'GET',
       url: '/auth/me',
-      cookies: { [SESSION_COOKIE]: cookieValue },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(me.statusCode).toBe(200);
     expect(me.json().user.email).toBe('rest@example.com');
@@ -131,18 +127,18 @@ describe('REST API — httpOnly 세션 쿠키', () => {
     expect(anonymous.statusCode).toBe(401);
   });
 
-  it('POST /auth/logout: 세션 무효화 + 쿠키 제거 → 이후 me는 401', async () => {
+  it('POST /auth/logout: 세션 무효화 → 이후 me는 401', async () => {
     const logout = await app.inject({
       method: 'POST',
       url: '/auth/logout',
-      cookies: { [SESSION_COOKIE]: cookieValue },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(logout.statusCode).toBe(200);
 
     const me = await app.inject({
       method: 'GET',
       url: '/auth/me',
-      cookies: { [SESSION_COOKIE]: cookieValue },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(me.statusCode).toBe(401);
   });

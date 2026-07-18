@@ -1,5 +1,5 @@
 /**
- * Socket.io 핸드셰이크 인증 통합 테스트 — 세션 쿠키로 소켓이 계정과 연결되고,
+ * Socket.io 핸드셰이크 인증 통합 테스트 — 세션 토큰(auth.token)으로 소켓이 계정과 연결되고,
  * 로그인 닉네임이 게임 내 표시 이름으로 강제되는지 실제 왕복으로 검증한다.
  */
 
@@ -18,7 +18,6 @@ import { createApp } from '../app';
 import { registerHandlers } from '../socket/registerHandlers';
 import type { RoomManager } from '../rooms/roomManager';
 import { AuthService } from './service';
-import { SESSION_COOKIE } from './routes';
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -30,11 +29,11 @@ let manager: RoomManager;
 let port: number;
 const clients: ClientSocket[] = [];
 
-function connect(cookie?: string): Promise<ClientSocket> {
+function connect(token?: string): Promise<ClientSocket> {
   return new Promise((resolve, reject) => {
     const socket = connectClient(`http://127.0.0.1:${port}`, {
       transports: ['websocket'],
-      extraHeaders: cookie ? { cookie } : {},
+      auth: token ? { token } : {},
     });
     clients.push(socket);
     socket.once('connect', () => resolve(socket));
@@ -73,18 +72,18 @@ afterAll(async () => {
 });
 
 describe('소켓 핸드셰이크 ↔ 계정 연동 (requirements 11번)', () => {
-  it('세션 쿠키로 연결하면 방 입장 시 계정 닉네임이 표시 이름으로 사용된다', async () => {
-    // REST로 가입 → 세션 쿠키 획득
+  it('세션 토큰으로 연결하면 방 입장 시 계정 닉네임이 표시 이름으로 사용된다', async () => {
+    // REST로 가입 → 세션 토큰 획득
     const signup = await app.inject({
       method: 'POST',
       url: '/auth/signup',
       payload: { email: 'sock@example.com', password: 'password123', nickname: '한별' },
     });
     expect(signup.statusCode).toBe(201);
-    const token = (signup.headers['set-cookie'] as string).split(';')[0]!.split('=')[1]!;
+    const token = signup.json().token as string;
 
-    // 쿠키를 들고 소켓 연결 → 방 생성 시 클라이언트가 보낸 name은 무시된다
-    const socket = await connect(`${SESSION_COOKIE}=${token}`);
+    // 토큰을 들고 소켓 연결 → 방 생성 시 클라이언트가 보낸 name은 무시된다
+    const socket = await connect(token);
     const created = await socket.emitWithAck(SOCKET_EVENTS.roomCreate, { name: '무시될이름' });
     expect(created.ok).toBe(true);
     const state = created.room as RoomStatePayload;
@@ -95,7 +94,7 @@ describe('소켓 핸드셰이크 ↔ 계정 연동 (requirements 11번)', () => 
     expect(room.players[0]!.accountId).toBeTruthy();
   });
 
-  it('쿠키 없이 연결하면 게스트로 동작한다 (허용 여부 미정 — 현재 기본 허용)', async () => {
+  it('토큰 없이 연결하면 게스트로 동작한다 (허용 여부 미정 — 현재 기본 허용)', async () => {
     const socket = await connect();
     const created = await socket.emitWithAck(SOCKET_EVENTS.roomCreate, { name: '손님' });
     expect(created.ok).toBe(true);
@@ -105,8 +104,8 @@ describe('소켓 핸드셰이크 ↔ 계정 연동 (requirements 11번)', () => 
     expect(room.players[0]!.accountId).toBeUndefined();
   });
 
-  it('위조된 세션 쿠키는 계정 연결 없이 게스트로 처리된다', async () => {
-    const socket = await connect(`${SESSION_COOKIE}=forged-token-value`);
+  it('위조된 세션 토큰은 계정 연결 없이 게스트로 처리된다', async () => {
+    const socket = await connect('forged-token-value');
     const created = await socket.emitWithAck(SOCKET_EVENTS.roomCreate, { name: '수상한자' });
     expect(created.ok).toBe(true);
     const state = created.room as RoomStatePayload;

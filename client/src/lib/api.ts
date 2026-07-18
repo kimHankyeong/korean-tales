@@ -1,7 +1,9 @@
 /**
- * 서버 REST 클라이언트 — httpOnly 세션 쿠키 기반이라 모든 요청에 credentials를 포함한다.
+ * 서버 REST 클라이언트 — Bearer 토큰 기반. 세션 토큰이 있으면 모든 요청에
+ * Authorization 헤더로 실어 보낸다 (쿠키를 쓰지 않는 이유는 lib/authToken.ts 참고).
  */
 
+import { getToken } from './authToken';
 import { SERVER_URL } from './serverUrl';
 
 export interface ProfileUser {
@@ -9,6 +11,8 @@ export interface ProfileUser {
   email: string;
   nickname: string;
   profileImageUrl: string | null;
+  /** ADMIN_EMAILS 환경변수에 이 계정이 있으면 true (13번 — 정원 미달 시작 등 관리자 전용 기능) */
+  isAdmin: boolean;
 }
 
 /** 서버 상대 경로(/uploads/...)를 절대 URL로 변환 — 절대 URL은 그대로 통과 */
@@ -18,7 +22,10 @@ export function resolveAssetUrl(url: string | null | undefined): string | null {
 }
 
 async function request(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${SERVER_URL}${path}`, { credentials: 'include', ...init });
+  const token = getToken();
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('authorization', `Bearer ${token}`);
+  return fetch(`${SERVER_URL}${path}`, { ...init, headers });
 }
 
 export async function fetchMe(): Promise<ProfileUser | null> {
@@ -31,30 +38,30 @@ export async function signup(input: {
   email: string;
   password: string;
   nickname: string;
-}): Promise<{ ok: true; user: ProfileUser } | { ok: false; error: string }> {
+}): Promise<{ ok: true; user: ProfileUser; token: string } | { ok: false; error: string }> {
   const response = await request('/auth/signup', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const body = (await response.json()) as { user?: ProfileUser; error?: string };
-  return response.ok && body.user
-    ? { ok: true, user: body.user }
+  const body = (await response.json()) as { user?: ProfileUser; token?: string; error?: string };
+  return response.ok && body.user && body.token
+    ? { ok: true, user: body.user, token: body.token }
     : { ok: false, error: body.error ?? 'UNKNOWN' };
 }
 
 export async function login(input: {
   email: string;
   password: string;
-}): Promise<{ ok: true; user: ProfileUser } | { ok: false; error: string }> {
+}): Promise<{ ok: true; user: ProfileUser; token: string } | { ok: false; error: string }> {
   const response = await request('/auth/login', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(input),
   });
-  const body = (await response.json()) as { user?: ProfileUser; error?: string };
-  return response.ok && body.user
-    ? { ok: true, user: body.user }
+  const body = (await response.json()) as { user?: ProfileUser; token?: string; error?: string };
+  return response.ok && body.user && body.token
+    ? { ok: true, user: body.user, token: body.token }
     : { ok: false, error: body.error ?? 'UNKNOWN' };
 }
 
@@ -89,4 +96,17 @@ export async function uploadAvatar(
   return response.ok && body.user
     ? { ok: true, user: body.user }
     : { ok: false, error: body.error ?? 'UNKNOWN' };
+}
+
+export async function updatePassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const response = await request('/profile/password', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+  const body = (await response.json()) as { ok?: boolean; error?: string };
+  return response.ok && body.ok ? { ok: true } : { ok: false, error: body.error ?? 'UNKNOWN' };
 }
