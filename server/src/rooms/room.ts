@@ -13,8 +13,10 @@ import {
   CHARACTER_BY_ID,
   DEFAULT_ROOM_TIMER_SETTINGS,
   ROOM_OPTIONS,
+  ROSTER_BY_MODE,
   SOCKET_EVENTS,
   TIMER_CONFIG,
+  type CharacterId,
   type ChatChannel,
   type ChatMessagePayload,
   type ClientGameAction,
@@ -64,7 +66,8 @@ export type RoomError =
   | 'INVALID_SETTINGS'
   | 'NOT_ENOUGH_PLAYERS'
   | 'NOT_IN_ROOM'
-  | 'NOT_ALLOWED';
+  | 'NOT_ALLOWED'
+  | 'INVALID_CHARACTER';
 
 export interface SurrenderState {
   faction: Faction;
@@ -224,23 +227,39 @@ export class Room {
 
   /* ── 게임 시작 ────────────────────────────────── */
 
-  startGame(requesterId: string): RoomError | null {
+  /**
+   * @param isAdmin true(ADMIN_EMAILS 계정)면 정원 미달이어도 시작을 허용한다
+   * (13번 — 봇 없이 실제 참여 인원만으로 혼자 테스트 가능하게).
+   * @param characterId 관리자 전용 — 지정하면 요청자 본인이 그 캐릭터로 확정 배정된다(테스트 목적).
+   *   일반 유저가 보내도 무시된다(isAdmin이 아니면 서버가 반영하지 않음).
+   */
+  startGame(requesterId: string, isAdmin = false, characterId?: CharacterId): RoomError | null {
     if (requesterId !== this.hostId) return 'NOT_HOST';
     if (this.inGame) return 'ALREADY_IN_GAME';
-    if (this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
-    return this.beginGame();
+    if (this.players.length === 0) return 'NOT_ENOUGH_PLAYERS';
+    if (!isAdmin && this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
+    if (isAdmin && characterId && !ROSTER_BY_MODE[this.settings.mode].includes(characterId)) {
+      return 'INVALID_CHARACTER';
+    }
+    const fixedCharacter = isAdmin && characterId ? { playerId: requesterId, characterId } : undefined;
+    return this.beginGame(isAdmin, fixedCharacter);
   }
 
   /** 실제 게임 시작 처리 — 정원·권한 검증은 호출부(startGame/setReady)가 담당 */
-  private beginGame(): RoomError | null {
+  private beginGame(
+    allowUnderstaffed = false,
+    fixedCharacter?: { playerId: string; characterId: CharacterId },
+  ): RoomError | null {
     if (this.inGame) return 'ALREADY_IN_GAME';
-    if (this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
+    if (!allowUnderstaffed && this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
 
-    // 1) 캐릭터 무작위 배정 (진영 선호 우선 고려 — 보장 아님)
+    // 1) 캐릭터 무작위 배정 (진영 선호 우선 고려 — 보장 아님. 관리자 지정이 있으면 그 사람만 확정)
     const assignment = assignCharacters(
       this.players.map((p) => ({ playerId: p.id, factionPreference: p.factionPreference })),
       this.settings.mode,
       this.rng,
+      allowUnderstaffed,
+      fixedCharacter ? { [fixedCharacter.playerId]: fixedCharacter.characterId } : undefined,
     );
 
     const gamePlayers: GamePlayer[] = this.players.map((p, i) => {
@@ -315,6 +334,13 @@ export class Room {
         const revivableTargetIds = snapshot.context.pendingDeaths
           .filter((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied)
           .map((d) => d.playerId);
+        // 도깨비 장난으로 살아남은 대상 — 실제로는 되살릴 필요가 없지만, 선택 시 둘 다 소모 처리된다
+        if (
+          snapshot.context.dokkaebiSavedTargetId &&
+          !revivableTargetIds.includes(snapshot.context.dokkaebiSavedTargetId)
+        ) {
+          revivableTargetIds.push(snapshot.context.dokkaebiSavedTargetId);
+        }
         this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
       }
     }
@@ -378,15 +404,19 @@ export class Room {
     const sender = snapshot.context.players.find((p) => p.id === senderId);
     if (!sender?.alive) return 'NOT_ALLOWED'; // 사망자는 관전만
 
+    const isNight = phasePath(snapshot.value).startsWith('night');
+
     if (channel === 'EVIL') {
       // 악 진영 전용 채널 — 밤에만, 악 진영 생존자에게만 중계 (요구: 밤 비밀 채팅 격리)
-      const isNight = phasePath(snapshot.value).startsWith('night');
       if (sender.faction !== 'EVIL' || !isNight) return 'NOT_ALLOWED';
       for (const p of snapshot.context.players) {
         if (p.faction === 'EVIL') this.emitter.toPlayer(p.id, SOCKET_EVENTS.chatMessage, payload);
       }
       return null;
     }
+
+    // 공개 채팅 — 밤에는 전체 토론 페이즈가 없으므로 아무도 쓸 수 없다 (악 진영은 EVIL 채널 사용)
+    if (isNight) return 'NOT_ALLOWED';
 
     this.emitter.toRoom(SOCKET_EVENTS.chatMessage, payload);
     return null;
@@ -395,19 +425,30 @@ export class Room {
   /* ── 투항 — 30초 팀 동의 (6번 섹션) ────────────── */
 
   /**
-   * 최초 클릭 = 진행 시작(30초 카운트), 이후 같은 팀 클릭 = 동의.
-   * 진행 상황은 같은 팀에게만 전송되어 상대 팀에 노출되지 않는다.
-   * 30초 내 팀 생존자 전원 동의 → TEAM_SURRENDER로 게임 종료 (상대 팀 승리).
+   * 투항에 동의해야 하는 생존자 id 목록 — 선 진영 투항은 생존 중립도 함께 동의해야 한다
+   * (중립은 선 진영 승리에 편승하므로, 8번 섹션). 악 진영 투항은 악 진영 생존자만 대상.
+   */
+  private surrenderRequiredIds(faction: Faction, snapshot: GameSnapshot): string[] {
+    return snapshot.context.players
+      .filter((p) => p.alive && (p.faction === faction || (faction === 'GOOD' && p.faction === 'NEUTRAL')))
+      .map((p) => p.id);
+  }
+
+  /**
+   * 최초 클릭 = 진행 시작(30초 카운트), 이후 같은 팀(+선 진영이면 중립) 클릭 = 동의.
+   * 중립은 선 진영 투항에 동참만 가능하고 스스로 투항을 시작할 수는 없다.
+   * 진행 상황은 동의 대상에게만 전송되어 상대 팀에 노출되지 않는다.
+   * 30초 내 전원 동의 → TEAM_SURRENDER로 게임 종료 (상대 팀 승리).
    */
   agreeSurrender(playerId: string): RoomError | null {
     if (!this.session) return 'NOT_IN_ROOM';
     const snapshot = this.session.getSnapshot();
     const player = snapshot.context.players.find((p) => p.id === playerId);
     if (!player?.alive) return 'NOT_ALLOWED';
-    if (player.faction === 'NEUTRAL') return 'NOT_ALLOWED'; // 투항은 선/악 팀 단위
 
     if (!this.surrender) {
-      // 진행 시작
+      // 진행 시작 — 중립은 스스로 시작할 수 없음(선/악 팀 단위)
+      if (player.faction === 'NEUTRAL') return 'NOT_ALLOWED';
       this.surrender = {
         faction: player.faction,
         agreed: new Set([playerId]),
@@ -420,13 +461,15 @@ export class Room {
         () => this.cancelSurrender('TIMEOUT'),
       );
     } else {
-      if (this.surrender.faction !== player.faction) return 'NOT_ALLOWED'; // 다른 팀 진행 중
+      // 다른 팀(선 진영 투항에 동참하는 중립은 예외) 진행 중이면 거부
+      const eligible =
+        this.surrender.faction === player.faction ||
+        (this.surrender.faction === 'GOOD' && player.faction === 'NEUTRAL');
+      if (!eligible) return 'NOT_ALLOWED';
       this.surrender.agreed.add(playerId);
     }
 
-    const required = snapshot.context.players
-      .filter((p) => p.alive && p.faction === this.surrender!.faction)
-      .map((p) => p.id);
+    const required = this.surrenderRequiredIds(this.surrender.faction, snapshot);
     const complete = required.every((id) => this.surrender!.agreed.has(id));
 
     this.broadcastSurrenderProgress(required, complete ? 'COMPLETED' : 'IN_PROGRESS');
@@ -464,10 +507,7 @@ export class Room {
       return;
     }
     if (reason === 'TIMEOUT') {
-      const snapshot = this.session.getSnapshot();
-      const required = snapshot.context.players
-        .filter((p) => p.alive && p.faction === this.surrender!.faction)
-        .map((p) => p.id);
+      const required = this.surrenderRequiredIds(this.surrender.faction, this.session.getSnapshot());
       this.broadcastSurrenderProgress(required, 'CANCELLED');
     }
     this.surrenderTimer.cancel();

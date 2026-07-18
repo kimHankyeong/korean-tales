@@ -13,7 +13,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AuthService, AuthUser } from '../auth/service';
-import { SESSION_COOKIE } from '../auth/routes';
+import { bearerToken } from '../auth/routes';
 import {
   AVATAR_CONTENT_TYPES,
   AVATAR_MIME_TYPES,
@@ -24,7 +24,7 @@ import {
 } from './avatar';
 
 async function currentUser(request: FastifyRequest, auth: AuthService): Promise<AuthUser | null> {
-  const token = request.cookies[SESSION_COOKIE];
+  const token = bearerToken(request);
   return token ? auth.validateSession(token) : null;
 }
 
@@ -54,6 +54,22 @@ export function registerProfileRoutes(
     if (!result.ok) return reply.status(400).send({ error: result.error });
     return reply.send({ user: result.user });
   });
+
+  /* 비밀번호 변경 */
+  app.patch<{ Body: { currentPassword?: string; newPassword?: string } }>(
+    '/profile/password',
+    async (request, reply) => {
+      const user = await currentUser(request, auth);
+      if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' });
+      const result = await auth.updatePassword(
+        user.id,
+        String(request.body?.currentPassword ?? ''),
+        String(request.body?.newPassword ?? ''),
+      );
+      if (!result.ok) return reply.status(400).send({ error: result.error });
+      return reply.send({ ok: true });
+    },
+  );
 
   /* 프로필 사진 업로드 — 클라이언트가 256×256으로 리사이즈해 보낸 raw 이미지 */
   app.post(

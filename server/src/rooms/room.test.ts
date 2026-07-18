@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  ROSTER_BY_MODE,
   SOCKET_EVENTS,
   TIMER_CONFIG,
   type GameOverPayload,
@@ -45,6 +46,16 @@ function makeRoom(seed = 1) {
 /** u2~u9 입장 (9인 채움) */
 function fillRoom(room: Room, count = 8) {
   for (let i = 2; i <= count + 1; i++) room.join({ id: `u${i}`, name: `유저${i}` });
+}
+
+/**
+ * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체(선스킬→악토론→악투표→악개별) +
+ * 자청비 꽃 선택(멸망꽃은 항상 가능해 매 새벽 뜸, 자동 패스)까지 통과시켜
+ * 9인 모드 조언자 선출(또는 7인 모드 개인 발언) 직전 상태로 만든다.
+ */
+function passNightZero(room: Room) {
+  const session = room.session!;
+  for (let i = 0; i < 5; i++) session.send({ type: 'TIME_UP' });
 }
 
 /** 게임 중 방의 역할 배정 결과를 (개인 전송 기록에서) 수집 */
@@ -98,6 +109,48 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     const { room } = makeRoom();
     fillRoom(room, 5); // 6명뿐
     expect(room.startGame('u1')).toBe('NOT_ENOUGH_PLAYERS');
+  });
+
+  it('관리자는 정원 미달이어도 시작할 수 있다 (혼자 테스트, 13번)', () => {
+    const { room } = makeRoom();
+    // u1(방장) 혼자, 9인 모드 그대로
+    expect(room.startGame('u1', true)).toBeNull();
+    expect(room.inGame).toBe(true);
+  });
+
+  it('관리자여도 방장이 아니거나 인원이 0명이면 시작할 수 없다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    expect(room.startGame('u2', true)).toBe('NOT_HOST');
+
+    const { room: emptyRoom } = makeRoom();
+    emptyRoom.leave('u1'); // 방장 본인만 있던 방을 비움
+    expect(emptyRoom.startGame('u1', true)).toBe('NOT_ENOUGH_PLAYERS');
+  });
+
+  it('관리자는 정원 미달로 혼자 시작할 때 직업을 직접 골라 배정받을 수 있다 (13번)', () => {
+    const { room, emitter } = makeRoom();
+    expect(room.startGame('u1', true, 'dokkaebi')).toBeNull();
+    const role = emitter.playerEventsOf('u1', SOCKET_EVENTS.gameRole)[0]!.payload as GameRolePayload;
+    expect(role.characterId).toBe('dokkaebi');
+  });
+
+  it('관리자가 아니면 캐릭터 지정을 보내도 무시되고(랜덤 배정 유지) NOT_HOST/정원 검증이 우선한다', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room); // 9명 채움 — 관리자 아니어도 정상 시작 가능
+    expect(room.startGame('u1', false, 'dokkaebi')).toBeNull();
+    const role = emitter.playerEventsOf('u1', SOCKET_EVENTS.gameRole)[0]!.payload as GameRolePayload;
+    // 무작위 배정 결과 — 반드시 dokkaebi일 필요 없음(지정이 반영되지 않았어야 함이 핵심 의도이나
+    // seed에 따라 우연히 같을 수 있으므로, 9인 로스터 내 캐릭터인지만 확인)
+    expect(ROSTER_BY_MODE[9]).toContain(role.characterId);
+  });
+
+  it('관리자가 현재 모드 로스터에 없는 캐릭터를 지정하면 INVALID_CHARACTER로 거부되고 게임이 시작되지 않는다', () => {
+    const { room } = makeRoom();
+    room.updateSettings('u1', { mode: 7, personalSpeechSeconds: 80, discussionSeconds: 180 });
+    // 까치선비는 9인 전용 — 7인 로스터엔 없음(ROSTER_BY_MODE[7])
+    expect(room.startGame('u1', true, 'kkachi')).toBe('INVALID_CHARACTER');
+    expect(room.inGame).toBe(false);
   });
 
   it('정원이 다 차고 전원 준비되면 방장의 시작 클릭 없이 자동으로 게임이 시작된다', () => {
@@ -181,10 +234,15 @@ describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {
     expect(role.faction).toBe('EVIL'); // 악 3자리 중 하나 — 단독 선호라 항상 반영
   });
 
-  it('시작 직후 공개 상태가 브로드캐스트된다 (9인 → 조언자 출마 단계)', () => {
+  it('시작 직후에는 밤부터, 밤 0이 끝나면 조언자 출마 단계로 공개 상태가 브로드캐스트된다 (9인)', () => {
     const { room, emitter } = makeRoom();
     fillRoom(room);
     room.startGame('u1');
+    const firstState = emitter.roomEvents.find((e) => e.event === SOCKET_EVENTS.gameState)!
+      .payload as PublicGameState;
+    expect(firstState.phase).toBe('night.goodSkills'); // 게임은 항상 밤부터 시작
+
+    passNightZero(room);
     const states = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameState);
     const last = states.at(-1)!.payload as PublicGameState;
     expect(last.phase).toBe('firstMorning.candidacy');
@@ -203,6 +261,7 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
     const roles = rolesOf(emitter, ids);
     const session = room.session!;
+    passNightZero(room); // 밤 0 통과
     session.send({ type: 'TIME_UP' }); // 선출 스킵 (출마 없음)
     while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
     session.send({ type: 'TIME_UP' }); // 토론 → 투표
@@ -226,6 +285,15 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     }
     // 방 전체로도 나가지 않음
     expect(emitter.roomEvents.some((e) => e.event === SOCKET_EVENTS.gameInvestigation)).toBe(false);
+  });
+
+  it('밤에는 공개 채팅을 아무도 쓸 수 없다 (악 진영도 EVIL 채널만 가능)', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const evilId = ids.find((id) => roles[id]!.faction === 'EVIL')!;
+    const goodId = ids.find((id) => roles[id]!.faction === 'GOOD')!;
+    expect(room.chat(goodId, 'PUBLIC', '누구세요')).toBe('NOT_ALLOWED');
+    expect(room.chat(evilId, 'PUBLIC', '저도 안 돼요')).toBe('NOT_ALLOWED');
   });
 
   it('악 채널 채팅은 밤에 악 진영 생존자에게만 중계된다', () => {
@@ -252,7 +320,7 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
     const roles = rolesOf(emitter, ids);
     const evilId = ids.find((id) => roles[id]!.faction === 'EVIL')!;
-    // 아직 첫날 아침(선출) — 밤이 아니므로 거부
+    passNightZero(room); // 밤 0을 지나 첫날 아침(선출)까지 — 밤이 아니므로 거부돼야 함
     expect(room.chat(evilId, 'EVIL', '벌써?')).toBe('NOT_ALLOWED');
   });
 
@@ -301,9 +369,30 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(last.status).toBe('CANCELLED');
     expect(room.inGame).toBe(true); // 게임 계속
 
-    // 중립·사망자는 투항 불가 검증 (바리공주 = NEUTRAL)
+    // 중립은 스스로 투항을 시작할 수 없다 (바리공주 = NEUTRAL, 진행 중인 투항 없음)
     const neutralId = ids.find((id) => roles[id]!.faction === 'NEUTRAL')!;
     expect(room.agreeSurrender(neutralId)).toBe('NOT_ALLOWED');
+  });
+
+  it('선 진영 투항은 생존 중립도 함께 동의해야 완료된다 (8번 섹션)', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const goodIds = ids.filter((id) => roles[id]!.faction === 'GOOD');
+    const neutralId = ids.find((id) => roles[id]!.faction === 'NEUTRAL')!;
+
+    // 선 진영 전원만 동의 — 중립이 빠졌으니 아직 미완료
+    for (const id of goodIds) expect(room.agreeSurrender(id)).toBeNull();
+    expect(room.inGame).toBe(true);
+    const progress = emitter
+      .playerEventsOf(goodIds[0]!, SOCKET_EVENTS.surrenderProgress)
+      .at(-1)!.payload as SurrenderProgressPayload;
+    expect(progress.required).toHaveLength(goodIds.length + 1); // 선 진영 + 중립 1명
+    expect(progress.status).toBe('IN_PROGRESS');
+
+    // 중립이 마저 동의하면 완료 — 악 진영 승리
+    expect(room.agreeSurrender(neutralId)).toBeNull();
+    const over = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameOver);
+    expect((over[0]!.payload as GameOverPayload).winner).toBe('EVIL');
   });
 });
 

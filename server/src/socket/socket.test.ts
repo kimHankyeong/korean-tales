@@ -1,6 +1,6 @@
 /**
  * Socket.io 통합 테스트 — 실제 서버·클라이언트 왕복으로 방 생성 → 입장 → 시작 →
- * 비밀 역할 배정까지 검증한다. (7인 모드 — 조언자 선출 없이 바로 낮 시작)
+ * 비밀 역할 배정까지 검증한다. (7인 모드 — 게임은 항상 밤부터 시작, 조언자 선출은 없음)
  */
 
 import { createServer, type Server as HttpServer } from 'node:http';
@@ -98,9 +98,10 @@ describe('Socket.io 실시간 레이어 (7인 모드 풀 사이클)', () => {
     // 선호 반영 (악 2자리 — 단독 선호이므로 반영)
     expect(roles[1]!.faction).toBe('EVIL');
 
-    // 공개 상태: 7인 모드는 조언자 선출 없이 바로 낮 개인 발언, 역할 정보 없음
+    // 공개 상태: 게임은 항상 밤부터 시작 (7인 모드는 밤 0이 끝나면 조언자 선출 없이 바로
+    // 낮 개인 발언으로 이어지지만, 실시간 타이머라 그 전환까지 기다리진 않고 최초 상태만 검증)
     const state = await statePromise;
-    expect(state.phase).toBe('day.personalSpeech');
+    expect(state.phase).toBe('night.goodSkills');
     expect(state.players).toHaveLength(7);
     expect(JSON.stringify(state)).not.toContain('characterId');
 

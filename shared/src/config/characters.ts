@@ -61,9 +61,13 @@ export const CHARACTERS: readonly GameCharacter[] = [
         effectKind: 'COMPANION_ON_DEATH',
         decisionSeconds: TIMER_CONFIG.nightEvilIndividualSkill,
         target: { count: 1, scope: 'ALIVE_OTHERS' },
+        sealedByDeathCauses: ['DOOM_FLOWER'],
         description:
           '전날 밤 미리 길동무 1인을 지정한다. 투표·처형 등으로 자신이 사망하면 지정한 사람이 함께 죽는다.',
-        notes: ['2회 지정 후에도 사망하지 않았다면 스킬 종료.'],
+        notes: [
+          '2회 지정 후에도 사망하지 않았다면 스킬 종료.',
+          '자청비의 멸망꽃으로 사망한 경우 길동무 동반 사망이 발동하지 않는다.',
+        ],
       },
     ],
   },

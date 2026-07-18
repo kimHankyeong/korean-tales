@@ -33,15 +33,37 @@ function makePlayers7(): GamePlayer[] {
   }));
 }
 
+type Actor = ReturnType<typeof createActor<typeof gameMachine>>;
+
+const timeUp = (actor: Actor) => actor.send({ type: 'TIME_UP' });
+
+/** 밤 전체를 이벤트 주입 없이 통과: 선스킬 → 악토론 → 악투표 → 악개별스킬 */
+function passNight(actor: Actor) {
+  timeUp(actor); // goodSkills → evilDiscussion
+  timeUp(actor); // evilDiscussion → evilVote
+  timeUp(actor); // evilVote → evilSkills (무투표 → 킬 없음)
+  timeUp(actor); // evilSkills → dawn
+}
+
+/**
+ * 밤을 통과한 뒤 자청비의 꽃 선택(멸망꽃은 사망자와 무관하게 항상 선택 가능해 매 새벽마다 뜬다)
+ * 까지 자동으로 패스(TIME_UP)해 사망 처리를 거쳐 다음 단계로 넘어간다.
+ */
+function passNightAndFlower(actor: Actor) {
+  passNight(actor);
+  timeUp(actor); // flowerDecision → (자동 패스) → resolveDeaths
+}
+
+/**
+ * 게임은 항상 밤(밤 0)부터 시작한다 — 여기서 조용히 통과시켜 기존 테스트들이
+ * 전과 동일하게 firstMorning/개인 발언 상태에서 시작하는 것처럼 쓸 수 있게 한다.
+ */
 function startGame(rng: () => number = () => 0) {
   const actor = createActor(gameMachine, { input: { players: makePlayers(), rng } });
   actor.start();
+  passNightAndFlower(actor);
   return actor;
 }
-
-type Actor = ReturnType<typeof startGame>;
-
-const timeUp = (actor: Actor) => actor.send({ type: 'TIME_UP' });
 
 /** 출마자 없이 선출 단계 통과 → 첫날 낮 개인 발언 */
 function skipElection(actor: Actor) {
@@ -65,13 +87,13 @@ const aliveIds = (actor: Actor) =>
 const player = (actor: Actor, id: string) =>
   actor.getSnapshot().context.players.find((p) => p.id === id)!;
 
-/** 밤 전체를 이벤트 주입 없이 통과: 선스킬 → 악토론 → 악투표 → 악개별스킬 */
-function passNight(actor: Actor) {
-  timeUp(actor); // goodSkills → evilDiscussion
-  timeUp(actor); // evilDiscussion → evilVote
-  timeUp(actor); // evilVote → evilSkills (무투표 → 킬 없음)
-  timeUp(actor); // evilSkills → dawn
-}
+describe('게임 시작 (requirements 4번 — 항상 밤부터)', () => {
+  it('setup 직후에는 밤(밤 0)부터 시작한다', () => {
+    const actor = createActor(gameMachine, { input: { players: makePlayers(), rng: () => 0 } });
+    actor.start();
+    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+  });
+});
 
 describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
   it('9인 모드는 출마 신청 상태에서 시작한다', () => {
@@ -147,6 +169,8 @@ describe('7인 모드 (requirements 1번 — 조언자 뽑기 제외)', () => {
   it('조언자 선출 없이 바로 첫날 낮 개인 발언에서 시작한다 (정순 고정)', () => {
     const actor = createActor(gameMachine, { input: { players: makePlayers7(), rng: () => 0 } });
     actor.start();
+    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true); // 7인도 밤부터 시작
+    passNightAndFlower(actor);
     const snap = actor.getSnapshot();
     expect(snap.context.mode).toBe(7);
     expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
@@ -311,6 +335,24 @@ describe('밤 페이즈 (requirements 4번)', () => {
     expect(player(actor, 'p6').skillUses.prank).toBe(1); // 보호 성공으로 1회 소모(이후 재사용 불가)
   });
 
+  it('도깨비 보호 성공 + 자청비가 같은 대상에게 부활꽃 사용: 실제로 되살릴 필요는 없지만 둘 다 소모 처리된다', () => {
+    const actor = startGame();
+    toNight(actor);
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
+    timeUp(actor); // → evilDiscussion
+    timeUp(actor); // → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
+    timeUp(actor); // → evilSkills
+    timeUp(actor); // → dawn: 보호 성공으로 킬 무효, 도깨비 장난 영구 소모
+    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    expect(player(actor, 'p6').skillUses.prank).toBe(1);
+
+    actor.send({ type: 'FLOWER_REVIVE', targetId: 'p5' }); // 이미 살아있는 대상 — 되살릴 필요 없음
+    expect(player(actor, 'p5').alive).toBe(true);
+    expect(player(actor, 'p4').skillUses['revival-flower']).toBe(1); // 부활꽃도 소모됨
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
+  });
+
   it('도깨비 보호 실패: 보호 대상이 킬 대상과 다르면 킬은 그대로 반영되고 스킬은 소모되지 않아 다음 밤에도 재사용 가능', () => {
     const actor = startGame();
     toNight(actor);
@@ -431,6 +473,25 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
   });
 
+  it('저승사자가 길동무를 지정한 밤 자청비의 멸망꽃으로 죽으면 길동무는 동반 사망하지 않는다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    toNight(actor);
+    timeUp(actor); // goodSkills → evilDiscussion
+    timeUp(actor); // evilDiscussion → evilVote (무투표)
+    timeUp(actor); // evilVote → evilSkills
+    actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' });
+    timeUp(actor); // → dawn → flowerDecision (킬 없음, 멸망꽃은 항상 가능)
+    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+
+    actor.send({ type: 'FLOWER_DOOM', targetId: 'p1' }); // 저승사자(p1) 자신을 멸망꽃으로 처형
+    const snap = actor.getSnapshot();
+    expect(player(actor, 'p1').alive).toBe(false);
+    expect(player(actor, 'p6').alive).toBe(true); // 길동무 동반 사망 미발동 (봉인)
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
+    expect(snap.context.awaiting).toBeNull();
+  });
+
   it('멸망꽃으로 죽은 장화홍련은 피 맺힌 유서 기회 자체가 봉인된다', () => {
     const actor = startGame();
     skipElection(actor);
@@ -517,6 +578,7 @@ describe('승리 판정 (requirements 8번)', () => {
     );
     const actor = createActor(gameMachine, { input: { players, rng: () => 0 } });
     actor.start();
+    passNightAndFlower(actor); // 밤 0 통과 (자청비 꽃 자동 패스 포함)
     timeUp(actor); // 선출 스킵
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표

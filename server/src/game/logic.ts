@@ -289,6 +289,17 @@ export function isTakeAlongSealed(victim: GamePlayer, cause: DeathCause): boolea
   return !!skill?.sealedByDeathCauses?.includes(cause);
 }
 
+/**
+ * 저승길 동무 봉인 판정 — 자청비 멸망꽃으로 사망한 저승사자는 길동무 동반 사망이 발동하지 않는다
+ * (사용 횟수는 밤에 지정한 시점에 이미 소모되었으므로 그대로 유지, 트리거만 무효화됨)
+ */
+export function isCompanionSealed(victim: GamePlayer, cause: DeathCause): boolean {
+  const skill = CHARACTER_BY_ID[victim.characterId].skills.find(
+    (s) => s.effectKind === 'COMPANION_ON_DEATH',
+  );
+  return !!skill?.sealedByDeathCauses?.includes(cause);
+}
+
 /** 3) 연민 적용 판정 — 부활 수혜자(까치선비) 한정, 부활자(바리공주) 생존 + 양쪽 스킬 미소모 */
 export function compassionApplies(players: readonly GamePlayer[], victim: GamePlayer): boolean {
   const beneficiary = CHARACTER_BY_ID[victim.characterId].skills.find(
@@ -328,10 +339,11 @@ export function computeDeathTriggers(
   const triggers: DeathTriggerKind[] = [];
   const character = CHARACTER_BY_ID[victim.characterId];
 
-  // 저승사자류: 길동무 동반 사망
+  // 저승사자류: 길동무 동반 사망 — 멸망꽃 사망이면 봉인(isCompanionSealed)되어 발동하지 않음
   if (
     character.skills.some((s) => s.effectKind === 'COMPANION_ON_DEATH') &&
-    state.companionTargetId !== null
+    state.companionTargetId !== null &&
+    !isCompanionSealed(victim, death.cause)
   ) {
     triggers.push('COMPANION');
   }
@@ -441,6 +453,11 @@ export interface DawnResult {
   players: GamePlayer[];
   pendingDeaths: PendingDeath[];
   scheduledRevivals: string[];
+  /**
+   * 도깨비 장난이 그날 밤 킬을 막아 살아남은 대상 — 자청비가 이 대상에게 부활꽃을 써도
+   * "쓴 것으로" 처리(둘 다 소모)할 수 있도록 다음 아침 꽃 단계까지 넘겨준다.
+   */
+  protectedTargetId: string | null;
 }
 
 /**
@@ -482,7 +499,12 @@ export function processDawn(input: {
     if (dokkaebi) players = markSkillUsed(players, dokkaebi.id, 'prank');
   }
 
-  return { players, pendingDeaths, scheduledRevivals: [] };
+  return {
+    players,
+    pendingDeaths,
+    scheduledRevivals: [],
+    protectedTargetId: killOutcome.protectionSucceeded ? input.nightKillTargetId : null,
+  };
 }
 
 /* ── 부활꽃 대상 판정 (requirements 5-1항) ─────────── */

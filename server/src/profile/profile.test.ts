@@ -12,7 +12,6 @@ import { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
 import { createApp } from '../app';
 import { AuthService } from '../auth/service';
-import { SESSION_COOKIE } from '../auth/routes';
 import { MAX_AVATAR_BYTES, sniffImageType } from './avatar';
 
 const serverDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -25,7 +24,7 @@ const webpBytes = () =>
 let tempDir: string;
 let prisma: PrismaClient;
 let app: FastifyInstance;
-let cookie: string;
+let token: string;
 
 beforeAll(async () => {
   tempDir = mkdtempSync(path.join(tmpdir(), 'kt-profile-'));
@@ -44,7 +43,7 @@ beforeAll(async () => {
     url: '/auth/signup',
     payload: { email: 'me@example.com', password: 'password123', nickname: '달래' },
   });
-  cookie = (signup.headers['set-cookie'] as string).split(';')[0]!.split('=')[1]!;
+  token = signup.json().token as string;
   // 닉네임 중복 테스트용 두 번째 유저
   await app.inject({
     method: 'POST',
@@ -74,14 +73,14 @@ describe('닉네임 변경 (requirements 11번 마이페이지)', () => {
     const patch = await app.inject({
       method: 'PATCH',
       url: '/profile/nickname',
-      cookies: { [SESSION_COOKIE]: cookie },
+      headers: { authorization: `Bearer ${token}` },
       payload: { nickname: '새달래' },
     });
     expect(patch.statusCode).toBe(200);
     const me = await app.inject({
       method: 'GET',
       url: '/auth/me',
-      cookies: { [SESSION_COOKIE]: cookie },
+      headers: { authorization: `Bearer ${token}` },
     });
     expect(me.json().user.nickname).toBe('새달래');
   });
@@ -90,7 +89,7 @@ describe('닉네임 변경 (requirements 11번 마이페이지)', () => {
     const taken = await app.inject({
       method: 'PATCH',
       url: '/profile/nickname',
-      cookies: { [SESSION_COOKIE]: cookie },
+      headers: { authorization: `Bearer ${token}` },
       payload: { nickname: '바우' },
     });
     expect(taken.statusCode).toBe(400);
@@ -99,7 +98,7 @@ describe('닉네임 변경 (requirements 11번 마이페이지)', () => {
     const invalid = await app.inject({
       method: 'PATCH',
       url: '/profile/nickname',
-      cookies: { [SESSION_COOKIE]: cookie },
+      headers: { authorization: `Bearer ${token}` },
       payload: { nickname: '가' },
     });
     expect(invalid.statusCode).toBe(400);
@@ -113,14 +112,59 @@ describe('닉네임 변경 (requirements 11번 마이페이지)', () => {
   });
 });
 
+describe('비밀번호 변경 (requirements 11번 마이페이지)', () => {
+  it('현재 비밀번호가 맞아야 바꿀 수 있고, 이후 새 비밀번호로 로그인된다', async () => {
+    const wrong = await app.inject({
+      method: 'PATCH',
+      url: '/profile/password',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: 'wrong-password', newPassword: 'newpassword123' },
+    });
+    expect(wrong.statusCode).toBe(400);
+    expect(wrong.json().error).toBe('INVALID_CURRENT_PASSWORD');
+
+    const short = await app.inject({
+      method: 'PATCH',
+      url: '/profile/password',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: 'password123', newPassword: 'short' },
+    });
+    expect(short.statusCode).toBe(400);
+    expect(short.json().error).toBe('WEAK_PASSWORD');
+
+    const ok = await app.inject({
+      method: 'PATCH',
+      url: '/profile/password',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { currentPassword: 'password123', newPassword: 'newpassword123' },
+    });
+    expect(ok.statusCode).toBe(200);
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: { email: 'me@example.com', password: 'newpassword123' },
+    });
+    expect(login.statusCode).toBe(200);
+  });
+
+  it('미인증 요청은 401', async () => {
+    const anonymous = await app.inject({
+      method: 'PATCH',
+      url: '/profile/password',
+      payload: { currentPassword: 'x', newPassword: 'newpassword123' },
+    });
+    expect(anonymous.statusCode).toBe(401);
+  });
+});
+
 describe('아바타 업로드 — 서버측 형식·용량 재검증', () => {
   it('유효한 이미지는 저장되고 profileImageUrl이 갱신되며 정적 서빙된다', async () => {
     const body = pngBytes();
     const upload = await app.inject({
       method: 'POST',
       url: '/profile/avatar',
-      cookies: { [SESSION_COOKIE]: cookie },
-      headers: { 'content-type': 'image/png' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'image/png' },
       payload: body,
     });
     expect(upload.statusCode).toBe(200);
@@ -137,8 +181,7 @@ describe('아바타 업로드 — 서버측 형식·용량 재검증', () => {
     const upload = await app.inject({
       method: 'POST',
       url: '/profile/avatar',
-      cookies: { [SESSION_COOKIE]: cookie },
-      headers: { 'content-type': 'image/webp' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'image/webp' },
       payload: webpBytes(),
     });
     expect(upload.statusCode).toBe(200);
@@ -155,8 +198,7 @@ describe('아바타 업로드 — 서버측 형식·용량 재검증', () => {
     const fake = await app.inject({
       method: 'POST',
       url: '/profile/avatar',
-      cookies: { [SESSION_COOKIE]: cookie },
-      headers: { 'content-type': 'image/png' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'image/png' },
       payload: Buffer.from('GIF89a pretending to be png..'),
     });
     expect(fake.statusCode).toBe(400);
@@ -167,8 +209,7 @@ describe('아바타 업로드 — 서버측 형식·용량 재검증', () => {
     const gif = await app.inject({
       method: 'POST',
       url: '/profile/avatar',
-      cookies: { [SESSION_COOKIE]: cookie },
-      headers: { 'content-type': 'image/gif' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'image/gif' },
       payload: Buffer.from('GIF89a'),
     });
     expect(gif.statusCode).toBe(415);
@@ -176,8 +217,7 @@ describe('아바타 업로드 — 서버측 형식·용량 재검증', () => {
     const huge = await app.inject({
       method: 'POST',
       url: '/profile/avatar',
-      cookies: { [SESSION_COOKIE]: cookie },
-      headers: { 'content-type': 'image/png' },
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'image/png' },
       payload: Buffer.concat([PNG_SIGNATURE, Buffer.alloc(MAX_AVATAR_BYTES + 2048, 1)]),
     });
     expect(huge.statusCode).toBe(413);

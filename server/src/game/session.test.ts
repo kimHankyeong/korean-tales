@@ -25,19 +25,42 @@ function makeSession(overrides?: Partial<ConstructorParameters<typeof GameSessio
   return { session, syncs };
 }
 
+/**
+ * 밤 0(게임은 항상 밤부터 시작) + 자청비 꽃 선택(멸망꽃은 사망자와 무관하게 항상 선택
+ * 가능해 매 새벽마다 뜬다, 자동 패스) 총 소요 시간 — 9인 모드 조언자 선출 타이머 직전까지.
+ */
+const NIGHT_ZERO_MS =
+  (TIMER_CONFIG.nightGoodSkillDecision +
+    TIMER_CONFIG.nightEvilDiscussion +
+    TIMER_CONFIG.vote +
+    TIMER_CONFIG.nightEvilIndividualSkill +
+    TIMER_CONFIG.morningFlowerDecision) *
+  1000;
+
 describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('시작 시 출마 신청 타이머(7초)를 시작하고 동기화 페이로드를 내보낸다', () => {
+  it('시작 시 밤(밤 0) 스킬 타이머를 먼저 시작한다', () => {
     const { session, syncs } = makeSession();
     session.start();
     expect(syncs).toHaveLength(1);
     expect(syncs[0]).toMatchObject({
+      phaseKey: 'goodSkills:0',
+      durationSeconds: TIMER_CONFIG.nightGoodSkillDecision,
+    });
+    session.stop();
+  });
+
+  it('밤 0을 통과하면 출마 신청 타이머(7초)로 이어진다', () => {
+    const { session, syncs } = makeSession();
+    session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
+    const candidacySync = syncs.at(-1)!;
+    expect(candidacySync).toMatchObject({
       phaseKey: 'candidacy',
       durationSeconds: TIMER_CONFIG.advisorCandidacy,
     });
-    expect(syncs[0]!.endsAt - syncs[0]!.serverNow).toBe(TIMER_CONFIG.advisorCandidacy * 1000);
     expect(session.remainingMs()).toBe(TIMER_CONFIG.advisorCandidacy * 1000);
     session.stop();
   });
@@ -45,6 +68,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   it('타이머 만료 시 TIME_UP이 자동 발행되어 상태가 전이된다', () => {
     const { session } = makeSession();
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000);
     // 출마자 없음 → 조언자 없이 첫날 낮 개인 발언
     expect(session.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
@@ -56,6 +80,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
       settings: { personalSpeechSeconds: 120, discussionSeconds: 300 },
     });
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000);
     const speechSync = syncs.at(-1)!;
     expect(speechSync.phaseKey).toBe('speech:1:p1');
@@ -66,6 +91,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   it('발언자 본인 Skip 시 다음 발언자 타이머로 즉시 재시작된다', () => {
     const { session, syncs } = makeSession();
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000); // → speech p1
     session.send({ type: 'SKIP', playerId: 'p1' });
     expect(syncs.at(-1)).toMatchObject({ phaseKey: 'speech:1:p2', durationSeconds: 80 });
@@ -75,6 +101,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   it('같은 페이즈 안의 이벤트(투표 등록)는 타이머를 재시작하지 않는다', () => {
     const { session, syncs } = makeSession();
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     // 출마 7초 → 개인 발언 9명 × 80초 → 전체 토론 180초 → 투표
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000);
     vi.advanceTimersByTime(9 * 80 * 1000);
@@ -91,6 +118,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   it('타이머 진행만으로 첫날 낮 전체가 자동 진행되어 밤에 도달한다', () => {
     const { session } = makeSession();
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000); // 선출(출마 없음)
     vi.advanceTimersByTime(9 * 80 * 1000); // 개인 발언 9명
     vi.advanceTimersByTime(180 * 1000); // 전체 토론
@@ -114,6 +142,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   it('입력 대기 트리거(피 맺힌 유서)도 10초 타이머로 자동 포기된다', () => {
     const { session, syncs } = makeSession();
     session.start();
+    vi.advanceTimersByTime(NIGHT_ZERO_MS);
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000);
     vi.advanceTimersByTime(9 * 80 * 1000);
     vi.advanceTimersByTime(180 * 1000);

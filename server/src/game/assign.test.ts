@@ -35,6 +35,43 @@ describe('캐릭터 무작위 배정 (진영 선호 반영)', () => {
     expect(() => assignCharacters(requests(8, () => null), 9, seededRng(3))).toThrow();
   });
 
+  it('allowUnderstaffed=true면 정원 미달도 로스터 일부만 무작위 배정된다 (13번 관리자 우회)', () => {
+    const result = assignCharacters(requests(1, () => null), 9, seededRng(4), true);
+    const assigned = Object.values(result);
+    expect(assigned.length).toBe(1);
+    expect(ROSTER_BY_MODE[9]).toContain(assigned[0]);
+  });
+
+  it('allowUnderstaffed=true여도 로스터보다 많으면 여전히 에러', () => {
+    expect(() => assignCharacters(requests(10, () => null), 9, seededRng(5), true)).toThrow();
+  });
+
+  it('fixedAssignments로 지정한 플레이어는 항상 그 캐릭터로 배정된다 (13번 관리자 직업 선택)', () => {
+    for (let seed = 1; seed <= 10; seed++) {
+      const result = assignCharacters(requests(9, () => null), 9, seededRng(seed), false, {
+        p1: 'dokkaebi',
+      });
+      expect(result.p1).toBe('dokkaebi');
+      expect(new Set(Object.values(result)).size).toBe(9); // 나머지도 중복 없이 배정
+    }
+  });
+
+  it('fixedAssignments가 정원 미달과 함께 쓰여도 나머지는 남은 로스터에서 배정된다', () => {
+    const result = assignCharacters(requests(1, () => null), 9, seededRng(1), true, {
+      p1: 'jacheongbi',
+    });
+    expect(result).toEqual({ p1: 'jacheongbi' });
+  });
+
+  it('fixedAssignments에 로스터에 없는 캐릭터가 지정되면 무시하고 일반 배정한다', () => {
+    // 7인 모드에는 없는 캐릭터(까치선비 — 9인 전용)를 억지로 지정
+    const result = assignCharacters(requests(7, () => null), 7, seededRng(1), false, {
+      p1: 'kkachi',
+    });
+    expect(result.p1).not.toBe('kkachi');
+    expect(new Set(Object.values(result)).size).toBe(7);
+  });
+
   it('선호 진영 슬롯이 남아 있으면 선호가 반영된다', () => {
     // 1명만 EVIL 선호 — 악 슬롯 3개이므로 항상 반영
     for (let seed = 1; seed <= 20; seed++) {

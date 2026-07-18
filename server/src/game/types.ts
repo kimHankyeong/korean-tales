@@ -60,7 +60,7 @@ export interface InvestigationRecord {
 
 export interface GameContext {
   players: GamePlayer[];
-  /** 일차 — 1부터 시작, 새벽(dawn)마다 +1 */
+  /** 일차 — 밤 0(게임 시작 직후 첫 밤) 종료 시 1이 되고, 이후 새벽(dawn)마다 +1 */
   day: number;
   /** 인원수 모드 — 7인 모드는 조언자 선출 없음 (1번 섹션) */
   mode: PlayerMode;
@@ -70,6 +70,8 @@ export interface GameContext {
   speechQueue: string[];
   /** 전체 토론 skip 집계 — 생존자 전원 skip 시 조기 종료 (1번 섹션) */
   skipVotes: string[];
+  /** 9인 모드에서 밤 0 종료 후 조언자 선출로 진입해야 하는지 — 1회 소모되면 false로 고정 */
+  firstMorningPending: boolean;
 
   /* 조언자 (requirements 7번) */
   advisorId: string | null;
@@ -94,6 +96,12 @@ export interface GameContext {
   nightKillTargetId: string | null;
   /** 도깨비가 그날 밤 지정한 보호 대상 — 밤마다 재지정, 새벽 처리 후 초기화 */
   dokkaebiProtectTargetId: string | null;
+  /**
+   * 그날 밤 도깨비 장난으로 살아남은 대상 — 그 아침 자청비가 이 대상에게 부활꽃을
+   * 사용해도(실제로는 되살릴 필요가 없지만) 유효한 사용으로 인정해 소모 처리한다.
+   * 매 새벽 새로 계산되어 덮어써진다.
+   */
+  dokkaebiSavedTargetId: string | null;
   /** 구미호 유혹 — 다음날 낮 투표 스킵 */
   seduceNextDay: boolean;
   /** 저승사자가 지정해 둔 길동무 (재지정 시 갱신, 사망 시 소모) */

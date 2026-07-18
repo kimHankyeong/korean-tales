@@ -8,8 +8,10 @@ import {
   computeDeathTriggers,
   computeSpeechOrder,
   investigate,
+  isCompanionSealed,
   isRevivableTonight,
   isTakeAlongSealed,
+  processDawn,
   processDeathQueue,
   resolveElectionVote,
   resolveExecutionVote,
@@ -195,6 +197,67 @@ describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
     expect(isTakeAlongSealed(janghwa, 'DAY_EXECUTION')).toBe(false);
     expect(isTakeAlongSealed(janghwa, 'COMPANION_DEATH')).toBe(false); // 동반 사망은 봉인 아님
     expect(isTakeAlongSealed(byChar(makePlayers(), 'haetae'), 'DOOM_FLOWER')).toBe(false); // 스킬 미보유
+  });
+
+  it('멸망꽃 사망 → 저승길 동무(길동무) 봉인, 그 외 원인은 봉인 없음', () => {
+    const jeoseung = byChar(makePlayers(), 'jeoseung');
+    expect(isCompanionSealed(jeoseung, 'DOOM_FLOWER')).toBe(true);
+    expect(isCompanionSealed(jeoseung, 'DAY_EXECUTION')).toBe(false);
+    expect(isCompanionSealed(jeoseung, 'EVIL_NIGHT_KILL')).toBe(false);
+    expect(isCompanionSealed(byChar(makePlayers(), 'haetae'), 'DOOM_FLOWER')).toBe(false); // 스킬 미보유
+  });
+
+  it('저승사자가 멸망꽃으로 사망하면 길동무를 지정해두었어도 동반 사망이 발동하지 않는다', () => {
+    const players = makePlayers();
+    const jeoseung = byChar(players, 'jeoseung');
+    const companion = byChar(players, 'haetae');
+    const triggers = computeDeathTriggers(
+      { players, advisorId: null, companionTargetId: companion.id },
+      jeoseung,
+      { playerId: jeoseung.id, cause: 'DOOM_FLOWER', applied: true },
+    );
+    expect(triggers).not.toContain('COMPANION');
+  });
+
+  it('저승사자가 그 외 원인으로 사망하면 길동무 동반 사망이 정상 발동한다', () => {
+    const players = makePlayers();
+    const jeoseung = byChar(players, 'jeoseung');
+    const companion = byChar(players, 'haetae');
+    const triggers = computeDeathTriggers(
+      { players, advisorId: null, companionTargetId: companion.id },
+      jeoseung,
+      { playerId: jeoseung.id, cause: 'DAY_EXECUTION', applied: true },
+    );
+    expect(triggers).toContain('COMPANION');
+  });
+
+  it('도깨비 보호가 성공하면 processDawn이 protectedTargetId를 반환한다 (자청비 부활꽃 겸용 소모용)', () => {
+    const result = processDawn({
+      players: makePlayers(),
+      scheduledRevivals: [],
+      nightKillTargetId: 'p5',
+      dokkaebiProtectTargetId: 'p5',
+    });
+    expect(result.protectedTargetId).toBe('p5');
+    expect(result.pendingDeaths).toEqual([]); // 보호 성공 — 사망 건 자체가 없음
+  });
+
+  it('보호가 실패하거나 킬이 없으면 processDawn의 protectedTargetId는 null이다', () => {
+    const killed = processDawn({
+      players: makePlayers(),
+      scheduledRevivals: [],
+      nightKillTargetId: 'p5',
+      dokkaebiProtectTargetId: null,
+    });
+    expect(killed.protectedTargetId).toBeNull();
+
+    const noKill = processDawn({
+      players: makePlayers(),
+      scheduledRevivals: [],
+      nightKillTargetId: null,
+      dokkaebiProtectTargetId: null,
+    });
+    expect(noKill.protectedTargetId).toBeNull();
   });
 });
 

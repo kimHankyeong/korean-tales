@@ -8,6 +8,7 @@
 import type { Server, Socket } from 'socket.io';
 import {
   SOCKET_EVENTS,
+  type CharacterId,
   type ChatChannel,
   type ClientGameAction,
   type Faction,
@@ -115,11 +116,16 @@ export function registerHandlers(
       ack?.(error ? { ok: false, error } : { ok: true });
     });
 
-    socket.on(SOCKET_EVENTS.roomStart, (_data: unknown, ack?: Ack) => {
-      const room = manager.roomOf(playerId);
-      const error = room ? room.startGame(playerId) : 'NOT_IN_ROOM';
-      ack?.(error ? { ok: false, error } : { ok: true });
-    });
+    socket.on(
+      SOCKET_EVENTS.roomStart,
+      (data: { characterId?: CharacterId } | undefined, ack?: Ack) => {
+        const room = manager.roomOf(playerId);
+        const identity = identityOf(socket);
+        const isAdmin = identity.kind === 'USER' && identity.isAdmin;
+        const error = room ? room.startGame(playerId, isAdmin, data?.characterId) : 'NOT_IN_ROOM';
+        ack?.(error ? { ok: false, error } : { ok: true });
+      },
+    );
 
     socket.on(SOCKET_EVENTS.roomList, (_data: unknown, ack?: (res: { ok: true; rooms: RoomSummary[] }) => void) => {
       ack?.({ ok: true, rooms: manager.list() });

@@ -14,7 +14,9 @@
  * - 전체 토론(선출 토론·낮 토론·악 토론): 해당 생존자 전원이 SKIP하면 조기 종료
  *
  * 상태 흐름 개요:
- *   setup → firstMorning(조언자 선출, 9인 모드만) → day ⇄ night 반복 → gameOver
+ *   setup → night(밤 0, 전 모드 공통) → firstMorning(조언자 선출, 9인 모드만) → day ⇄ night 반복 → gameOver
+ *   게임은 항상 밤부터 시작한다(4번 섹션). 9인 모드는 그 첫 밤이 끝난 뒤에만 조언자 선출로
+ *   진입하고(firstMorningPending), 이후의 모든 밤은 평소처럼 낮 개인 발언으로 돌아간다.
  *   사망 발생 시 공통적으로 resolveDeaths 서브 상태를 경유한다.
  */
 
@@ -69,6 +71,8 @@ export const gameMachine = setup({
     /* ── 모드 ── */
     // 전이 조건: 7인 모드 — 조언자 선출 없이 게임 시작 (발언 순서 정순 고정)
     electionDisabled: ({ context }) => !ADVISOR_ELECTION_BY_MODE[context.mode],
+    // 전이 조건: 9인 모드의 첫 밤(밤 0)이 막 끝남 → 조언자 선출로 진입 (그 이후 밤은 해당 없음)
+    firstMorningPending: ({ context }) => context.firstMorningPending,
 
     /* ── 조언자 선출 ── */
     // 전이 조건: 출마 신청자가 아무도 없음 → 조언자 없이 낮 진행
@@ -129,18 +133,20 @@ export const gameMachine = setup({
       if (!jacheongbi?.alive) return false;
       const revivable =
         canUseSkill(jacheongbi, 'revival-flower') &&
-        context.pendingDeaths.some((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied);
+        (context.pendingDeaths.some((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied) ||
+          context.dokkaebiSavedTargetId !== null);
       const doomable = canUseSkill(jacheongbi, 'doom-flower');
       return revivable || doomable;
     },
-    // 부활꽃 유효성: 그날 밤 악 진영 킬 사망자만 대상 (동반사망자·처형자 제외)
+    // 부활꽃 유효성: 그날 밤 악 진영 킬 사망자, 또는 도깨비 장난으로 살아남은 대상(둘 다 소모 처리)
     validRevive: ({ context, event }) => {
       if (event.type !== 'FLOWER_REVIVE') return false;
       const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi');
       return (
         !!jacheongbi?.alive &&
         canUseSkill(jacheongbi, 'revival-flower') &&
-        isRevivableTonight(context.pendingDeaths, event.targetId)
+        (isRevivableTonight(context.pendingDeaths, event.targetId) ||
+          event.targetId === context.dokkaebiSavedTargetId)
       );
     },
     // 멸망꽃 유효성: 생존자 1인 지정 (같은 아침 상호 배타는 상태 전이로 보장됨)
@@ -287,6 +293,8 @@ export const gameMachine = setup({
     }),
     // 조언자 없음 확정 → 발언 순서 정순 고정
     noAdvisor: assign({ advisorId: null, advisorBroken: true }),
+    // 밤 0 종료 후 조언자 선출로 1회만 진입 — 이후 밤에는 다시 트리거되지 않는다
+    consumeFirstMorningPending: assign({ firstMorningPending: false }),
 
     /* ── Skip 집계 (전체 토론 공용) ── */
     clearSkips: assign({ skipVotes: [] }),
@@ -434,6 +442,7 @@ export const gameMachine = setup({
         scheduledRevivals: result.scheduledRevivals,
         nightKillTargetId: null,
         dokkaebiProtectTargetId: null,
+        dokkaebiSavedTargetId: result.protectedTargetId,
         votes: {},
         tieCandidates: [],
       };
@@ -496,34 +505,40 @@ export const gameMachine = setup({
   },
 }).createMachine({
   id: 'game',
-  context: ({ input }) => ({
-    players: input.players,
-    day: 1,
-    mode: input.mode ?? (input.players.length === 7 ? 7 : 9),
-    roomSettings: input.settings ?? DEFAULT_ROOM_TIMER_SETTINGS,
-    speechQueue: [],
-    skipVotes: [],
-    advisorId: null,
-    advisorBroken: false,
-    speechDirection: 'FORWARD',
-    candidates: [],
-    appealQueue: [],
-    votes: {},
-    tieCandidates: [],
-    executionTargetId: null,
-    evilVotes: {},
-    nightKillTargetId: null,
-    dokkaebiProtectTargetId: null,
-    seduceNextDay: false,
-    companionTargetId: null,
-    lastInvestigation: null,
-    pendingDeaths: [],
-    awaiting: null,
-    resumeAfterDeaths: 'DAY_DISCUSSION',
-    scheduledRevivals: [],
-    winner: null,
-    rng: input.rng ?? Math.random,
-  }),
+  context: ({ input }) => {
+    const mode = input.mode ?? (input.players.length === 7 ? 7 : 9);
+    return {
+      players: input.players,
+      // 밤 0(첫 밤) 종료 시 새벽 처리가 +1 하므로 0에서 시작 — 첫 실제 낮이 day:1이 된다
+      day: 0,
+      mode,
+      roomSettings: input.settings ?? DEFAULT_ROOM_TIMER_SETTINGS,
+      speechQueue: [],
+      skipVotes: [],
+      firstMorningPending: ADVISOR_ELECTION_BY_MODE[mode],
+      advisorId: null,
+      advisorBroken: false,
+      speechDirection: 'FORWARD',
+      candidates: [],
+      appealQueue: [],
+      votes: {},
+      tieCandidates: [],
+      executionTargetId: null,
+      evilVotes: {},
+      nightKillTargetId: null,
+      dokkaebiProtectTargetId: null,
+      dokkaebiSavedTargetId: null,
+      seduceNextDay: false,
+      companionTargetId: null,
+      lastInvestigation: null,
+      pendingDeaths: [],
+      awaiting: null,
+      resumeAfterDeaths: 'DAY_DISCUSSION',
+      scheduledRevivals: [],
+      winner: null,
+      rng: input.rng ?? Math.random,
+    };
+  },
   initial: 'setup',
 
   // 전이 조건: 팀 전원 투항 확정(Room 레이어 30초 동의 완료) → 어느 상태에서든 즉시 게임 종료
@@ -532,18 +547,19 @@ export const gameMachine = setup({
   },
 
   states: {
-    /* ═══ 시작 분기 ═══ */
+    /* ═══ 시작 분기 — 게임은 항상 밤(밤 0)부터 시작한다 ═══ */
     setup: {
       always: [
-        // 전이 조건: 7인 모드 — 조언자 뽑기 제외, 바로 첫날 낮 개인 발언 (정순 고정)
-        { guard: 'electionDisabled', actions: 'noAdvisor', target: '#daySpeech' },
-        // 전이 조건: 9인 모드 — 첫날 아침 조언자 선출부터
-        { target: 'firstMorning' },
+        // 전이 조건: 7인 모드 — 조언자 뽑기 제외 (발언 순서 정순 고정), 밤 0부터 시작
+        { guard: 'electionDisabled', actions: 'noAdvisor', target: '#night' },
+        // 전이 조건: 9인 모드 — 밤 0이 끝나면 조언자 선출로(firstMorningPending 가드가 처리)
+        { target: '#night' },
       ],
     },
 
     /* ═══ 첫날 아침 — 조언자 선출 (requirements 7번) ═══ */
     firstMorning: {
+      id: 'firstMorning',
       initial: 'candidacy',
       states: {
         // 출마 신청 (7초)
@@ -801,6 +817,8 @@ export const gameMachine = setup({
             { guard: 'gameWon', actions: 'setWinner', target: '#gameOver' },
             // 전이 조건: 큐 소진 + 복귀 지점 = 밤
             { guard: 'resumeToNight', target: '#night' },
+            // 전이 조건: 밤 0(첫 밤) 직후 — 9인 모드는 조언자 선출로 (1회만, 그 이후 밤은 해당 없음)
+            { guard: 'firstMorningPending', actions: 'consumeFirstMorningPending', target: '#firstMorning' },
             // 전이 조건: 큐 소진 + 복귀 지점 = 낮 (개인 발언부터)
             { target: '#daySpeech' },
           ],

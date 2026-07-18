@@ -7,6 +7,7 @@
 import { randomBytes } from 'node:crypto';
 import argon2 from 'argon2';
 import type { PrismaClient } from '@prisma/client';
+import { isAdminEmail } from './admin';
 
 /** 클라이언트에 노출해도 되는 유저 정보 (비밀번호 해시 제외) */
 export interface AuthUser {
@@ -15,6 +16,8 @@ export interface AuthUser {
   nickname: string;
   profileImageUrl: string | null;
   createdAt: Date;
+  /** ADMIN_EMAILS 환경변수에 이 계정 이메일이 있으면 true (13번 — 정원 미달 시작 등) */
+  isAdmin: boolean;
 }
 
 export type SignupError =
@@ -53,6 +56,7 @@ function toAuthUser(user: {
     nickname: user.nickname,
     profileImageUrl: user.profileImageUrl,
     createdAt: user.createdAt,
+    isAdmin: isAdminEmail(user.email),
   };
 }
 
@@ -148,6 +152,22 @@ export class AuthService {
       data: { profileImageUrl: url },
     });
     return toAuthUser(user);
+  }
+
+  /** 비밀번호 변경 — 현재 비밀번호 확인 후 재해시. 다른 세션은 무효화하지 않는다(간단화) */
+  async updatePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<{ ok: true } | { ok: false; error: 'INVALID_CURRENT_PASSWORD' | 'WEAK_PASSWORD' }> {
+    if (newPassword.length < PASSWORD_MIN_LENGTH) return { ok: false, error: 'WEAK_PASSWORD' };
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !(await argon2.verify(user.passwordHash, currentPassword))) {
+      return { ok: false, error: 'INVALID_CURRENT_PASSWORD' };
+    }
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+    return { ok: true };
   }
 
   private async createSession(userId: string): Promise<string> {

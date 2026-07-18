@@ -23,6 +23,14 @@ function snapshotOf() {
   return { actor, snapshot: () => actor.getSnapshot() };
 }
 
+/**
+ * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체 + 자청비 꽃 선택(멸망꽃은 항상 가능해
+ * 매 새벽 뜸, 자동 패스)까지 통과시켜 조언자 선출 직전 상태로 만든다.
+ */
+function passNightZero(actor: ReturnType<typeof createActor<typeof gameMachine>>) {
+  for (let i = 0; i < 5; i++) actor.send({ type: 'TIME_UP' });
+}
+
 describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', () => {
   it('남의 이름으로 투표/스킵할 수 없다', () => {
     const { snapshot } = snapshotOf();
@@ -53,6 +61,7 @@ describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', 
 
   it('조언자 방향 결정은 조언자만 가능하다', () => {
     const { actor, snapshot } = snapshotOf();
+    passNightZero(actor);
     expect(isActionAllowed('p1', { type: 'ADVISOR_DIRECTION', direction: 'REVERSE' }, snapshot())).toBe(false);
     // p5를 조언자로 선출
     actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p5' });
@@ -71,6 +80,7 @@ describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', 
     // 대기 없음 — 거부
     expect(isActionAllowed('p7', { type: 'GRUDGE_TARGET', targetId: 'p1' }, snapshot())).toBe(false);
     // 장화홍련(p7) 처형 → 유서 대기
+    passNightZero(actor); // 밤 0 통과
     actor.send({ type: 'TIME_UP' }); // 선출 스킵
     while (snapshot().matches({ day: 'personalSpeech' })) actor.send({ type: 'TIME_UP' });
     actor.send({ type: 'TIME_UP' }); // 토론 → 투표
