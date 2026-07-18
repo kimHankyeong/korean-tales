@@ -46,6 +46,7 @@ function makeDeathState(players: GamePlayer[], overrides?: Partial<DeathProcessS
     advisorBroken: false,
     companionTargetId: null,
     awaiting: null,
+    deathAnnouncement: null,
     ...overrides,
   };
 }
@@ -308,11 +309,22 @@ describe('승리 판정 (requirements 8번)', () => {
     expect(checkWin(players)).toBe('EVIL');
   });
 
-  it('중립(바리공주·전향 까치선비)은 판정에 영향 없음 — 양 진영 생존 시 게임 계속', () => {
+  it('중립(바리공주·전향 까치선비) 전멸 → 선 생존자 수와 무관하게 즉시 악 승리', () => {
     const players = makePlayers().map((p) =>
       p.faction === 'NEUTRAL' ? { ...p, alive: false } : p,
     );
-    expect(checkWin(players)).toBeNull();
+    expect(checkWin(players)).toBe('EVIL');
+  });
+
+  it('중립이 살아있으면 그것만으로는 승패가 갈리지 않는다 (양 진영 다 생존 시 게임 계속)', () => {
+    expect(checkWin(makePlayers())).toBeNull(); // 아무도 안 죽은 초기 상태 — 중립(바리공주)도 생존
+  });
+
+  it('중립 전멸과 동시에 악 진영도 전멸하면 중립 규칙보다 기존 선 승리가 우선한다', () => {
+    const players = makePlayers().map((p) =>
+      p.faction === 'NEUTRAL' || p.faction === 'EVIL' ? { ...p, alive: false } : p,
+    );
+    expect(checkWin(players)).toBe('GOOD');
   });
 });
 
@@ -352,6 +364,22 @@ describe('사망 확정 트리거 (requirements 5-6항)', () => {
     expect(result.players.find((p) => p.id === jeoseung.id)?.alive).toBe(false);
     expect(result.players.find((p) => p.id === haetae.id)?.alive).toBe(false);
     expect(result.companionTargetId).toBeNull(); // 지정 소모
+    // 공개 발표 문구 — 대상의 배정 번호(seat)로 안내 (13번)
+    expect(result.deathAnnouncement).toBe(`저승사자가 길동무로 ${haetae.seat}번을 선택했습니다`);
+  });
+
+  it('길동무로 지정한 대상이 이미 죽어 있으면 동반 사망도, 발표 문구도 발생하지 않는다', () => {
+    const players = makePlayers();
+    const jeoseung = byChar(players, 'jeoseung');
+    const haetae = byChar(players, 'haetae');
+    const deadHaetae = players.map((p) => (p.id === haetae.id ? { ...p, alive: false } : p));
+    const result = processDeathQueue(
+      makeDeathState(deadHaetae, {
+        companionTargetId: haetae.id,
+        pendingDeaths: [{ playerId: jeoseung.id, cause: 'DAY_EXECUTION', applied: false }],
+      }),
+    );
+    expect(result.deathAnnouncement).toBeNull();
   });
 
   it('장화홍련 일반 사망 → 피 맺힌 유서 입력 대기(GRUDGE)', () => {

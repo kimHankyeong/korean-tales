@@ -51,6 +51,7 @@ function deathState(context: GameContext) {
     advisorBroken: context.advisorBroken,
     companionTargetId: context.companionTargetId,
     awaiting: context.awaiting,
+    deathAnnouncement: context.deathAnnouncement,
   };
 }
 
@@ -460,6 +461,7 @@ export const gameMachine = setup({
       const pendingDeaths = context.pendingDeaths.map((d, i) =>
         i === 0 ? { ...d, triggers: d.triggers?.slice(1) } : d,
       );
+      const target = getPlayer(context.players, event.targetId);
       return {
         players: markSkillUsed(context.players, ownerId, 'blood-grudge'),
         pendingDeaths: [
@@ -467,6 +469,7 @@ export const gameMachine = setup({
           { playerId: event.targetId, cause: 'TAKE_ALONG', applied: false } satisfies PendingDeath,
         ],
         awaiting: null,
+        deathAnnouncement: target ? `유서에 쓰인 건 ${target.seat}번입니다` : context.deathAnnouncement,
       };
     }),
     // 피 맺힌 유서 포기 (버튼 또는 10초 만료)
@@ -535,6 +538,7 @@ export const gameMachine = setup({
       awaiting: null,
       resumeAfterDeaths: 'DAY_DISCUSSION',
       scheduledRevivals: [],
+      deathAnnouncement: null,
       winner: null,
       rng: input.rng ?? Math.random,
     };

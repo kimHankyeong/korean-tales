@@ -16,6 +16,7 @@ import {
   ROSTER_BY_MODE,
   SOCKET_EVENTS,
   TIMER_CONFIG,
+  type AnnouncementPayload,
   type CharacterId,
   type ChatChannel,
   type ChatMessagePayload,
@@ -98,6 +99,7 @@ export class Room {
   private surrender: SurrenderState | null = null;
   private readonly surrenderTimer = new PhaseTimer();
   private lastInvestigation: InvestigationRecord | null = null;
+  private lastAnnouncement: string | null = null;
   /** 관리자가 정원을 채우려고 만든 가상 플레이어 id들 (13번 — 실제 소켓 없음, 관리자가 대신 조작) */
   private readonly virtualPlayerIds = new Set<string>();
   private virtualCounter = 0;
@@ -385,6 +387,14 @@ export class Room {
       }
     }
     this.lastInvestigation = investigation;
+
+    // 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목 등 공개되는 순간 방 전체에 1회 중계
+    const announcement = snapshot.context.deathAnnouncement;
+    if (announcement && announcement !== this.lastAnnouncement) {
+      const payload: AnnouncementPayload = { text: announcement };
+      this.emitter.toRoom(SOCKET_EVENTS.gameAnnouncement, payload);
+    }
+    this.lastAnnouncement = announcement;
 
     // 자청비 부활꽃 대상 후보 — 그날 밤 악 진영 킬 사망자만 (본인에게만, 5번 섹션).
     // 자청비가 가상 플레이어면 마찬가지로 관리자에게도 보내야 대신 선택할 수 있다

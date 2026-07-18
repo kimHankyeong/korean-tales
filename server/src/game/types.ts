@@ -114,6 +114,12 @@ export interface GameContext {
   resumeAfterDeaths: ResumePoint;
   /** 다음 새벽에 부활할 플레이어 (연민 예약) */
   scheduledRevivals: string[];
+  /**
+   * 방금 확정된 공개 발표 문구(길동무 동반 사망·유서 대상 지목 등) — Room이 감지해
+   * 방 전체에 game:announcement로 중계한다. 1회성이라 소비 후에도 값은 남아있을 수
+   * 있으므로(문자열 동일성으로 새 값만 재전송), 매번 처리 시 값이 없으면 null로 덮인다.
+   */
+  deathAnnouncement: string | null;
 
   winner: Faction | null;
   /** 무작위 판정용 난수원 — 테스트에서 결정적 함수 주입 */

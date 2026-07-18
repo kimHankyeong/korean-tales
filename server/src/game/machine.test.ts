@@ -270,6 +270,26 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     expect(snap.matches({ night: 'goodSkills' })).toBe(true);
     expect(snap.context.seduceNextDay).toBe(false); // 1회성 소모
   });
+
+  it('구미호가 밤 0(게임 시작 첫 밤)에 유혹을 쓰면 조언자 선출 이후 첫날 투표도 스킵된다 (9인)', () => {
+    const actor = createActor(gameMachine, { input: { players: makePlayers(), rng: () => 0 } });
+    actor.start();
+    timeUp(actor); // goodSkills → evilDiscussion
+    timeUp(actor); // → evilVote
+    timeUp(actor); // (킬 없음) → evilSkills
+    actor.send({ type: 'GUMIHO_SEDUCE' });
+    expect(actor.getSnapshot().context.seduceNextDay).toBe(true);
+    timeUp(actor); // → dawn → flowerDecision
+    actor.send({ type: 'FLOWER_PASS' }); // → firstMorning(9인) 조언자 출마
+    skipElection(actor); // 출마자 없음 → 곧장 낮 개인 발언
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
+    expect(actor.getSnapshot().context.seduceNextDay).toBe(true); // 여전히 유지
+    passSpeeches(actor);
+    timeUp(actor); // 토론 종료 → 유혹 발동: 투표 스킵, 바로 밤
+    const snap = actor.getSnapshot();
+    expect(snap.matches({ night: 'goodSkills' })).toBe(true);
+    expect(snap.context.seduceNextDay).toBe(false);
+  });
 });
 
 describe('밤 페이즈 (requirements 4번)', () => {
@@ -389,6 +409,8 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     expect(player(actor, 'p7').alive).toBe(false);
     expect(player(actor, 'p1').alive).toBe(false); // 동반 사망
     expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    // 공개 발표 문구 — 대상의 배정 번호로 안내 (13번)
+    expect(actor.getSnapshot().context.deathAnnouncement).toBe('유서에 쓰인 건 1번입니다');
   });
 
   it('피 맺힌 유서는 10초 미선택(TIME_UP) 시 자동 포기된다', () => {
@@ -471,6 +493,8 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     expect(player(actor, 'p6').alive).toBe(false); // 동반 사망 — 장난은 밤 킬만 막는다
     expect(player(actor, 'p5').alive).toBe(true);
     expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    // 공개 발표 문구 — 대상의 배정 번호로 안내 (13번)
+    expect(actor.getSnapshot().context.deathAnnouncement).toBe('저승사자가 길동무로 6번을 선택했습니다');
   });
 
   it('저승사자가 길동무를 지정한 밤 자청비의 멸망꽃으로 죽으면 길동무는 동반 사망하지 않는다', () => {
@@ -590,6 +614,20 @@ describe('승리 판정 (requirements 8번)', () => {
     const snap = actor.getSnapshot();
     expect(snap.status).toBe('done');
     expect(snap.context.winner).toBe('GOOD');
+  });
+
+  it('중립(바리공주) 전멸 시 선 진영 생존자 수와 무관하게 즉시 악 진영 승리', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p9'), 'p9'); // 바리공주(p9) 처형
+    timeUp(actor); // → 최후의 변론
+    timeUp(actor); // → 처형 → 사망 처리
+    const snap = actor.getSnapshot();
+    expect(player(actor, 'p9').alive).toBe(false);
+    expect(snap.status).toBe('done');
+    expect(snap.context.winner).toBe('EVIL'); // 선 진영은 대부분 생존 중이었음에도 즉시 악 승리
   });
 
   it('악 진영 전원 탈락 시 즉시 게임 종료 — 선 진영 승리', () => {

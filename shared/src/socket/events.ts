@@ -54,6 +54,8 @@ export const SOCKET_EVENTS = {
   gameFlowerOptions: 'game:flowerOptions',
   /** S→방 전체: 게임 종료 + 역할 전체 공개 */
   gameOver: 'game:over',
+  /** S→방 전체: 화면 중앙 4초 발표 문구 (길동무 동반 사망·유서 대상 지목 등 공개 순간) */
+  gameAnnouncement: 'game:announcement',
   /** C→S (ack, 관리자 전용): 가상 플레이어 대신 액션 제출 { playerId, action } */
   adminPuppetAction: 'admin:puppetAction',
   /** S→관리자 본인만: 가상 플레이어 포함 전원의 캐릭터 배정 (테스트용 전지적 시점) */
@@ -193,6 +195,11 @@ export interface PlayerGameResult {
 export interface GameOverPayload {
   winner: Faction;
   roles: PlayerGameResult[];
+}
+
+/** 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목 등 사망 확정 순간 공개되는 정보 */
+export interface AnnouncementPayload {
+  text: string;
 }
 
 /**

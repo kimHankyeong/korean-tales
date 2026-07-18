@@ -60,6 +60,10 @@ export function resolveActivePrompt(
     };
   }
 
+  // 사망자는 관전만 가능 — 투표·스킬·발언 어떤 프롬프트도 뜨지 않는다.
+  // (자신의 사망 확정 트리거 응답은 위에서 이미 처리되어 여기까지 오지 않음)
+  if (!state.players.find((p) => p.id === myId)?.alive) return null;
+
   switch (phase) {
     case 'firstMorning.appeal':
       return timerPhaseKey === `appeal:${myId}` ? { kind: 'SKIP' } : null;

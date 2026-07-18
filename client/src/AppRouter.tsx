@@ -66,11 +66,22 @@ export function AppRouter() {
       applyFlowerOptions,
       applyAdminRoster,
       addSystemMessage,
+      setAnnouncement,
     } = useGameStore.getState();
 
+    // 해태 본인에게만 오는 투사 결과 — "n번은 악 진영입니다/아닙니다" 형식으로 화면
+    // 중앙 4초 발표 + 채팅 로그 둘 다에 남긴다 (13번)
     const onInvestigation: Parameters<typeof socket.on>[1] = (payload) => {
       applyInvestigation(payload);
-      addSystemMessage(`투사 결과 — ${payload.result === 'EVIL' ? '악의 기운이 느껴진다' : '평범한 기운이다'}`);
+      const seat = useGameStore.getState().players.find((p) => p.id === payload.targetId)?.seat;
+      const text = `${seat ?? '?'}번은 악 진영${payload.result === 'EVIL' ? '입니다' : '이 아닙니다'}`;
+      addSystemMessage(text);
+      setAnnouncement(text);
+    };
+
+    // 길동무 동반 사망·유서 대상 지목 등 방 전체 공개 발표 문구 — 화면 중앙 4초
+    const onAnnouncement: Parameters<typeof socket.on>[1] = (payload: { text: string }) => {
+      setAnnouncement(payload.text);
     };
 
     socket.on(SOCKET_EVENTS.gameRole, applyRole);
@@ -83,6 +94,7 @@ export function AppRouter() {
     socket.on(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
     socket.on(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
     socket.on(SOCKET_EVENTS.adminRoster, applyAdminRoster);
+    socket.on(SOCKET_EVENTS.gameAnnouncement, onAnnouncement);
 
     return () => {
       socket.off(SOCKET_EVENTS.roomState, onRoomState);
@@ -97,6 +109,7 @@ export function AppRouter() {
       socket.off(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
       socket.off(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
       socket.off(SOCKET_EVENTS.adminRoster, applyAdminRoster);
+      socket.off(SOCKET_EVENTS.gameAnnouncement, onAnnouncement);
     };
   }, [status, applyRoomState, signOut]);
 

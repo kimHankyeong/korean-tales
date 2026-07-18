@@ -366,6 +366,35 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(emitter.roomEvents.some((e) => e.event === SOCKET_EVENTS.gameInvestigation)).toBe(false);
   });
 
+  it('길동무 동반 사망 발표 문구(game:announcement)가 방 전체에 중계된다 (13번)', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const session = room.session!;
+    const jeoseungId = ids.find((id) => roles[id]!.characterId === 'jeoseung')!;
+    const jacheongbiId = ids.find((id) => roles[id]!.characterId === 'jacheongbi')!;
+    const companionId = ids.find((id) => id !== jeoseungId)!;
+    const companionSeat = roles[companionId]!.seat;
+
+    session.send({ type: 'TIME_UP' }); // goodSkills → evilDiscussion
+    session.send({ type: 'TIME_UP' }); // → evilVote
+    session.send({ type: 'TIME_UP' }); // (무투표) → evilSkills
+    room.handleAction(jeoseungId, { type: 'JEOSEUNG_COMPANION', targetId: companionId });
+    session.send({ type: 'TIME_UP' }); // → dawn → flowerDecision (멸망꽃은 항상 가능)
+    room.handleAction(jacheongbiId, { type: 'FLOWER_PASS' });
+    while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
+    session.send({ type: 'TIME_UP' }); // 토론 → 투표
+    for (const id of ids) {
+      session.send({ type: 'VOTE', voterId: id, targetId: id === jeoseungId ? 'ABSTAIN' : jeoseungId });
+    }
+    session.send({ type: 'TIME_UP' }); // → finalPlea
+    session.send({ type: 'TIME_UP' }); // 처형 확정 → 사망 처리(길동무 동반 사망 자동 발동)
+
+    const announcements = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameAnnouncement);
+    expect(announcements).toEqual([
+      { event: SOCKET_EVENTS.gameAnnouncement, payload: { text: `저승사자가 길동무로 ${companionSeat}번을 선택했습니다` } },
+    ]);
+  });
+
   it('밤에는 공개 채팅을 아무도 쓸 수 없다 (악 진영도 EVIL 채널만 가능)', () => {
     const { room, emitter } = makeRoom();
     const { roles, ids } = startAndGoNight(room, emitter);

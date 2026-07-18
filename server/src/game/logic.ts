@@ -224,16 +224,18 @@ export function resolveNightKillTarget(
 
 /**
  * 탈락에 의한 승리 — 일차와 무관하게 매 사망 처리 후 체크.
- * 중립(바리공주, 전향한 까치선비)은 판정에 포함되지 않으며,
- * 중립만 생존해 있어도 게임 지속에는 영향 없음.
+ * 중립(바리공주, 전향한 까치선비)이 모두 탈락하면 선 진영 생존자 수와 무관하게
+ * 즉시 악 진영 승리로 끝난다(단, 악 진영도 이미 전멸했다면 그쪽이 우선).
  * 투항에 의한 승리는 소켓/타이머 연동 시 별도 이벤트로 처리 예정.
  */
 export function checkWin(players: readonly GamePlayer[]): Faction | null {
   const evilAlive = aliveOfFaction(players, 'EVIL').length;
   const goodAlive = aliveOfFaction(players, 'GOOD').length;
+  const neutralAlive = aliveOfFaction(players, 'NEUTRAL').length;
   if (evilAlive === 0 && goodAlive === 0) return 'GOOD'; // ⚠️ 동시 전멸 규칙 미정 — 선 승리로 가정
   if (evilAlive === 0) return 'GOOD';
   if (goodAlive === 0) return 'EVIL';
+  if (neutralAlive === 0) return 'EVIL'; // 중립 전멸 — 선 생존자 수와 무관하게 즉시 악 승리
   return null;
 }
 
@@ -322,6 +324,8 @@ export interface DeathProcessState {
   advisorBroken: boolean;
   companionTargetId: string | null;
   awaiting: AwaitingTrigger | null;
+  /** 방금 확정된 공개 발표 문구 (예: "저승사자가 길동무로 3번을 선택했습니다") — 없으면 null */
+  deathAnnouncement: string | null;
 }
 
 /**
@@ -380,6 +384,10 @@ export function processDeathQueue(input: DeathProcessState): DeathProcessState {
     })),
     scheduledRevivals: [...input.scheduledRevivals],
     awaiting: null,
+    // deathAnnouncement는 여기서 초기화하지 않는다 — GRUDGE_TARGET 처리(applyGrudge)가
+    // 먼저 문구를 세팅한 뒤 reenter로 이 함수가 다시 호출되는데, 여기서 null로 밀어버리면
+    // Room이 방송하기도 전에 사라진다. 이번 호출에서 새 트리거가 문구를 만들면 덮어쓰고,
+    // 아니면 들어온 값을 그대로 들고 나간다(문자열 동일성 기반 중복 방송 방지는 Room 담당).
   };
 
   while (state.pendingDeaths.length > 0) {
@@ -416,6 +424,7 @@ export function processDeathQueue(input: DeathProcessState): DeathProcessState {
         const target = targetId ? getPlayer(state.players, targetId) : undefined;
         if (target?.alive) {
           state.pendingDeaths.push({ playerId: target.id, cause: 'COMPANION_DEATH', applied: false });
+          state.deathAnnouncement = `저승사자가 길동무로 ${target.seat}번을 선택했습니다`;
         }
         death.triggers.shift();
       } else if (trigger === 'KKACHI_REVIVAL') {

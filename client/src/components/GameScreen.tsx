@@ -12,6 +12,7 @@ import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
 import { AdminPuppetPanel } from './AdminPuppetPanel';
+import { AnnouncementToast } from './AnnouncementToast';
 import { ChatWindow } from './ChatWindow';
 import { GameOverScreen } from './GameOverScreen';
 import { MyPage } from './MyPage';
@@ -39,6 +40,12 @@ export function GameScreen() {
   const [surrenderBusy, setSurrenderBusy] = useState(false);
   const [surrenderError, setSurrenderError] = useState<string | null>(null);
   const [showSound, setShowSound] = useState(false);
+  // Skip/단발성 버튼 프롬프트 클릭 피드백 — 눌렀는지 눈에 보이게(채도 낮춤).
+  // 새 발언 차례·페이즈가 오면 다시 누를 수 있어야 하므로 그 시점에 초기화한다.
+  const [actedOnPrompt, setActedOnPrompt] = useState(false);
+  useEffect(() => {
+    setActedOnPrompt(false);
+  }, [store.publicState?.phase, store.publicState?.currentSpeakerId, store.publicState?.executionTargetId]);
 
   // 로비 → 게임 진입 시 1회: 데모 잔여 상태 정리 + 계정 프로필 반영
   useEffect(() => {
@@ -90,8 +97,9 @@ export function GameScreen() {
   const chatLocked = isNight && !isEvil;
 
   return (
-    <main className="flex h-screen flex-col gap-3 bg-slate-950 p-4 text-slate-100 md:flex-row">
+    <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-hidden md:flex-row">
       <ServerWakeNotice />
+      <AnnouncementToast />
 
       <div className="fixed right-4 top-4 z-50 flex gap-1.5">
         <button
@@ -130,7 +138,7 @@ export function GameScreen() {
         />
       </div>
 
-      <PlayerListPanel players={store.players} />
+      <PlayerListPanel players={store.players} myId={store.myId} />
 
       <AdminPuppetPanel
         roster={store.adminRoster}
@@ -140,7 +148,7 @@ export function GameScreen() {
         onSubmit={sendPuppetAction}
       />
 
-      <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-64">
+      <aside className="flex w-full shrink-0 flex-col gap-1.5 overflow-y-auto landscape:w-56 landscape:min-w-48 md:w-64">
         <button
           type="button"
           onClick={() => setShowMyPage(true)}
@@ -218,8 +226,12 @@ export function GameScreen() {
         <div className="pointer-events-none fixed inset-0 z-40 grid place-items-end justify-items-center pb-24">
           <button
             type="button"
-            onClick={() => sendAction(prompt.action)}
-            className="pointer-events-auto rounded-lg bg-amber-600 px-6 py-2 text-sm font-bold text-white shadow-xl"
+            disabled={actedOnPrompt}
+            onClick={() => {
+              sendAction(prompt.action);
+              setActedOnPrompt(true);
+            }}
+            className="pointer-events-auto rounded-lg bg-amber-600 px-6 py-2 text-sm font-bold text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50"
           >
             {prompt.label}
           </button>
@@ -230,10 +242,14 @@ export function GameScreen() {
         <div className="pointer-events-none fixed inset-0 z-40 grid place-items-end justify-items-center pb-24">
           <button
             type="button"
-            onClick={() => sendAction({ type: 'SKIP', playerId: store.myId })}
-            className="pointer-events-auto rounded-lg border border-slate-400 bg-slate-900/90 px-6 py-2 text-sm font-bold text-slate-200 shadow-xl"
+            disabled={actedOnPrompt}
+            onClick={() => {
+              sendAction({ type: 'SKIP', playerId: store.myId });
+              setActedOnPrompt(true);
+            }}
+            className="pointer-events-auto rounded-lg border border-slate-400 bg-slate-900/90 px-6 py-2 text-sm font-bold text-slate-200 shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50"
           >
-            Skip
+            {actedOnPrompt ? 'Skip 완료' : 'Skip'}
           </button>
         </div>
       )}

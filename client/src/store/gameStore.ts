@@ -23,6 +23,7 @@ import { formatSpeechOrderLabel, type PhaseKind } from '../lib/format';
 
 let nextMessageId = 1;
 const messageId = () => `m${nextMessageId++}`;
+let nextAnnouncementId = 1;
 
 export interface GameUiState {
   myId: string;
@@ -52,6 +53,17 @@ export interface GameUiState {
   flowerOptions: FlowerOptionsPayload | null;
   /** 관리자 전용 — 가상 플레이어를 포함한 전원의 배정 (13번 — 없으면 빈 배열) */
   adminRoster: AdminRosterPayload['players'];
+  /**
+   * 내가 다른 플레이어에게 붙인 "추측한 직업" 메모 아이콘(이모지) — 순수 클라이언트
+   * 로컬 상태다. 서버에는 절대 보내지 않는다(추리는 본인만의 것). 새 게임 시작 시 초기화.
+   */
+  suspicionMarks: Record<string, string>;
+  /**
+   * 화면 중앙 4초 발표 문구 — 길동무 동반 사망(game:announcement), 유서 대상 지목
+   * (game:announcement), 투사 결과(gameInvestigation, 해태 본인에게만) 공용.
+   * id는 같은 문구가 연속으로 와도 매번 새로 4초 타이머가 돌게 하기 위한 값.
+   */
+  announcement: { id: number; text: string } | null;
 
   setMyId(id: string): void;
   setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
@@ -67,6 +79,11 @@ export interface GameUiState {
   applySurrenderProgress(payload: SurrenderProgressPayload | null): void;
   applyFlowerOptions(payload: FlowerOptionsPayload | null): void;
   applyAdminRoster(payload: AdminRosterPayload): void;
+  /** 추측 아이콘 설정 — emoji가 빈 문자열/null이면 지운다 */
+  setSuspicionMark(playerId: string, emoji: string | null): void;
+  /** 화면 중앙 발표 문구 표시(4초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
+  setAnnouncement(text: string): void;
+  clearAnnouncement(): void;
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -112,6 +129,8 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   surrenderProgress: null,
   flowerOptions: null,
   adminRoster: [],
+  suspicionMarks: {},
+  announcement: null,
 
   setMyId: (id) => set({ myId: id }),
 
@@ -133,11 +152,24 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       messages: [],
       condemnedId: null,
       timer: null,
+      suspicionMarks: {},
+      announcement: null,
     }),
 
   applyRole: (role) => set({ role }),
 
   applyAdminRoster: (payload) => set({ adminRoster: payload.players }),
+
+  setSuspicionMark: (playerId, emoji) =>
+    set((state) => {
+      const next = { ...state.suspicionMarks };
+      if (emoji) next[playerId] = emoji;
+      else delete next[playerId];
+      return { suspicionMarks: next };
+    }),
+
+  setAnnouncement: (text) => set({ announcement: { id: nextAnnouncementId++, text } }),
+  clearAnnouncement: () => set({ announcement: null }),
 
   applyGameState: (publicState) =>
     set((state) => {
