@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { SOCKET_EVENTS, type ClientGameAction } from '@korean-tales/shared';
+import { CHARACTER_BY_ID, FACTION_META, SOCKET_EVENTS, type ClientGameAction } from '@korean-tales/shared';
 import * as api from '../lib/api';
 import { resolveActivePrompt } from '../lib/gamePrompts';
 import { emitWithAck, getSocket } from '../lib/socket';
@@ -18,6 +18,7 @@ import { PlayerListPanel } from './PlayerListPanel';
 import { SelectionPanel, type SelectionTarget } from './SelectionPanel';
 import { ServerWakeNotice } from './ServerWakeNotice';
 import { SkillBookModal } from './SkillBookModal';
+import { SoundSettingsModal } from './SoundSettingsModal';
 
 function sendAction(action: ClientGameAction) {
   void emitWithAck(SOCKET_EVENTS.gameAction, action);
@@ -30,6 +31,9 @@ export function GameScreen() {
   const [showMyPage, setShowMyPage] = useState(false);
   const [showSkillBook, setShowSkillBook] = useState(false);
   const [flowerMode, setFlowerMode] = useState<'REVIVE' | 'DOOM' | null>(null);
+  const [surrenderBusy, setSurrenderBusy] = useState(false);
+  const [surrenderError, setSurrenderError] = useState<string | null>(null);
+  const [showSound, setShowSound] = useState(false);
 
   // 로비 → 게임 진입 시 1회: 데모 잔여 상태 정리 + 계정 프로필 반영
   useEffect(() => {
@@ -39,6 +43,9 @@ export function GameScreen() {
     // 계정 id로 비교하면 currentSpeakerId 등과 절대 일치하지 않는다.
     store.setMyId(getSocket().id ?? '');
     store.setMyProfile({ nickname: user.nickname, profileImageUrl: user.profileImageUrl });
+    // 발언 순서 안내 문구(예: "(해)낮-80초-1번")에 방 옵션 반영
+    const personalSpeechSeconds = useRoomStore.getState().room?.settings.personalSpeechSeconds;
+    if (personalSpeechSeconds) useGameStore.setState({ personalSpeechSeconds });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
@@ -91,6 +98,14 @@ export function GameScreen() {
     useGameStore.setState({ gameOverResult: null });
   }
 
+  async function agreeSurrenderClick() {
+    setSurrenderBusy(true);
+    setSurrenderError(null);
+    const ack = await emitWithAck<{ ok: boolean; error?: string }>(SOCKET_EVENTS.surrenderAgree);
+    setSurrenderBusy(false);
+    if (!ack.ok) setSurrenderError(ack.error ?? '투항에 실패했어요. 다시 눌러주세요.');
+  }
+
   function goLobby() {
     useGameStore.setState({ gameOverResult: null });
     getSocket().emit(SOCKET_EVENTS.roomLeave);
@@ -103,18 +118,34 @@ export function GameScreen() {
   const advisorDirectionActive =
     store.publicState?.phase === 'day.flowerDecision' && store.publicState.advisorId === store.myId;
 
+  // 밤에는 전체 공개 채팅이 없다 — 악 진영은 전용 채널로, 그 외는 채팅창 자체를 잠근다 (3번·4번 섹션)
+  const isNight = store.phase === 'NIGHT';
+  const isEvil = store.role?.faction === 'EVIL';
+  const chatLocked = isNight && !isEvil;
+
   return (
     <main className="flex h-screen flex-col gap-3 bg-slate-950 p-4 text-slate-100 md:flex-row">
       <ServerWakeNotice />
 
-      <button
-        type="button"
-        onClick={() => setShowSkillBook(true)}
-        className="fixed right-4 top-4 z-50 rounded-full border border-amber-500/50 bg-slate-900/90 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-lg hover:bg-slate-800"
-      >
-        직업 설명
-      </button>
+      <div className="fixed right-4 top-4 z-50 flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => setShowSkillBook(true)}
+          className="rounded-full border border-amber-500/50 bg-slate-900/90 px-3 py-1.5 text-xs font-bold text-amber-300 shadow-lg hover:bg-slate-800"
+        >
+          직업 설명
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowSound(true)}
+          aria-label="음향 설정"
+          className="rounded-full border border-slate-500 bg-slate-900/90 px-3 py-1.5 text-xs shadow-lg hover:bg-slate-800"
+        >
+          🔊
+        </button>
+      </div>
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
+      {showSound && <SoundSettingsModal onClose={() => setShowSound(false)} />}
 
       <div className="min-h-0 flex-1">
         <ChatWindow
@@ -123,8 +154,12 @@ export function GameScreen() {
           myId={store.myId}
           condemnedId={store.condemnedId}
           condemnedName={store.players.find((p) => p.id === store.condemnedId)?.name}
+          locked={chatLocked}
+          lockedReason="밤에는 채팅할 수 없어요 (악 진영은 전용 채널로 대화해요)"
           timer={store.timer}
-          onSend={(text) => void emitWithAck(SOCKET_EVENTS.chatSend, { text })}
+          onSend={(text) =>
+            void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text })
+          }
         />
       </div>
 
@@ -139,14 +174,29 @@ export function GameScreen() {
           마이페이지 열기
         </button>
 
+        {store.role && (
+          <p className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-200">
+            당신은 <b className="text-amber-300">{CHARACTER_BY_ID[store.role.characterId].name}</b>
+            {' ('}
+            {FACTION_META[store.role.faction].label}
+            {')'}입니다
+          </p>
+        )}
+
         {store.publicState?.winner === null && (
           <button
             type="button"
-            onClick={() => void emitWithAck(SOCKET_EVENTS.surrenderAgree)}
-            className="rounded-lg border border-red-700/60 px-3 py-1.5 text-left text-sm text-red-300 hover:bg-red-900/30"
+            disabled={surrenderBusy}
+            onClick={() => void agreeSurrenderClick()}
+            className="rounded-lg border border-red-700/60 px-3 py-1.5 text-left text-sm text-red-300 hover:bg-red-900/30 disabled:opacity-50"
           >
             투항 동의
           </button>
+        )}
+        {surrenderError && (
+          <p role="alert" className="text-xs text-red-400">
+            {surrenderError}
+          </p>
         )}
         {store.surrenderProgress?.status === 'IN_PROGRESS' && (
           <p className="text-xs text-amber-300">
@@ -285,6 +335,10 @@ export function GameScreen() {
           }}
           bgmVolume={store.bgmVolume}
           onChangeBgmVolume={store.setBgmVolume}
+          onChangePassword={async (currentPassword, newPassword) => {
+            const result = await api.updatePassword(currentPassword, newPassword);
+            return result.ok ? null : result.error;
+          }}
           onClose={() => setShowMyPage(false)}
         />
       )}

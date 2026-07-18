@@ -23,6 +23,8 @@ export interface MyPageProps {
   /** 배경음악 음량 (0~1) */
   bgmVolume: number;
   onChangeBgmVolume: (volume: number) => void;
+  /** 비밀번호 변경 — 실패 시 에러 메시지 반환, 성공 시 null. 미지정 시 비밀번호 변경 UI 숨김 */
+  onChangePassword?: (currentPassword: string, newPassword: string) => Promise<string | null>;
   onClose: () => void;
 }
 
@@ -32,6 +34,7 @@ export function MyPage({
   onUploadAvatar,
   bgmVolume,
   onChangeBgmVolume,
+  onChangePassword,
   onClose,
 }: MyPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,6 +42,10 @@ export function MyPage({
   const [message, setMessage] = useState<string | null>(null);
   const [cropFile, setCropFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [passwordBusy, setPasswordBusy] = useState(false);
 
   function onFileSelected(file: File | undefined) {
     if (!file) return;
@@ -65,6 +72,18 @@ export function MyPage({
     const error = await onUploadAvatar(blob);
     setBusy(false);
     setMessage(error ?? '프로필 사진을 변경했어요.');
+  }
+
+  async function savePassword() {
+    if (!onChangePassword) return;
+    setPasswordBusy(true);
+    const error = await onChangePassword(currentPassword, newPassword);
+    setPasswordBusy(false);
+    setPasswordMessage(error ?? '비밀번호를 변경했어요.');
+    if (!error) {
+      setCurrentPassword('');
+      setNewPassword('');
+    }
   }
 
   return (
@@ -136,6 +155,41 @@ export function MyPage({
           <p role="status" className="text-center text-xs text-amber-200">
             {message}
           </p>
+        )}
+
+        {onChangePassword && (
+          <div className="w-full space-y-1.5 border-t border-slate-700 pt-3">
+            <p className="text-xs text-slate-400">비밀번호 변경</p>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder="현재 비밀번호"
+              aria-label="현재 비밀번호"
+              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500"
+            />
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="새 비밀번호 (8자 이상)"
+              aria-label="새 비밀번호"
+              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-1.5 text-sm text-slate-100 placeholder:text-slate-500"
+            />
+            <button
+              type="button"
+              disabled={passwordBusy || !currentPassword || newPassword.length < 8}
+              onClick={() => void savePassword()}
+              className="w-full rounded-lg bg-amber-600 py-1.5 text-sm font-bold text-white disabled:opacity-40"
+            >
+              비밀번호 변경
+            </button>
+            {passwordMessage && (
+              <p role="status" className="text-center text-xs text-amber-200">
+                {passwordMessage}
+              </p>
+            )}
+          </div>
         )}
 
         <button

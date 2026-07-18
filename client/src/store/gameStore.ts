@@ -129,11 +129,37 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   applyRole: (role) => set({ role }),
 
   applyGameState: (publicState) =>
-    set({
-      publicState,
-      phase: publicState.phase.startsWith('night') ? 'NIGHT' : 'DAY',
-      players: publicState.players,
-      condemnedId: publicState.phase === 'day.finalPlea' ? publicState.executionTargetId : null,
+    set((state) => {
+      const phase: PhaseKind = publicState.phase.startsWith('night') ? 'NIGHT' : 'DAY';
+      // 최후의 변론·개인 발언 둘 다 "이 사람만 채팅 가능" 메커니즘을 공유한다 (ChatWindow)
+      const condemnedId =
+        publicState.phase === 'day.finalPlea'
+          ? publicState.executionTargetId
+          : publicState.phase === 'day.personalSpeech'
+            ? publicState.currentSpeakerId
+            : null;
+
+      // 개인 발언 차례가 바뀔 때마다 발언 순서 안내 시스템 메시지 추가
+      const prevSpeakerId =
+        state.publicState?.phase === 'day.personalSpeech' ? state.publicState.currentSpeakerId : null;
+      let messages = state.messages;
+      if (
+        publicState.phase === 'day.personalSpeech' &&
+        publicState.currentSpeakerId &&
+        publicState.currentSpeakerId !== prevSpeakerId
+      ) {
+        const seat = publicState.players.find((p) => p.id === publicState.currentSpeakerId)?.seat ?? 0;
+        messages = [
+          ...messages,
+          {
+            id: messageId(),
+            kind: 'SYSTEM',
+            text: formatSpeechOrderLabel(phase, state.personalSpeechSeconds, seat),
+          },
+        ];
+      }
+
+      return { publicState, phase, players: publicState.players, condemnedId, messages };
     }),
 
   applyGameOver: (gameOverResult) => set({ gameOverResult }),

@@ -2,7 +2,9 @@
  * 채팅창 — 6번 섹션:
  * - 상단에 낮/밤 표시(해 아이콘 애니메이션 → "낮" 텍스트 옆 고정) + 카운트다운 문구
  * - 발언 순서 표시 포맷 `(해)낮-80초-1번` 을 시스템 메시지로 노출
- * - 최후의 변론 모드: 처형 확정자만 입력 가능, 나머지는 입력창 비활성화(관전)
+ * - 단독 발언 모드(condemnedId): 최후의 변론·개인 발언 차례 둘 다 이 메커니즘을 공유한다 —
+ *   지정된 한 사람만 입력 가능, 나머지는 입력창 비활성화(관전)
+ * - 잠금 모드(locked): 밤에 악 진영이 아니면 전원 입력 불가(3번·4번 섹션)
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -25,11 +27,15 @@ export interface ChatWindowProps {
   messages: ChatMessageView[];
   myId: string;
   /**
-   * 최후의 변론 모드 — 값이 있으면 해당 플레이어만 입력 가능 (5-5항).
+   * 단독 발언 모드 — 값이 있으면 해당 플레이어만 입력 가능. 최후의 변론(5-5항)과
+   * 개인 발언 차례(7번 섹션) 둘 다 이 메커니즘을 공유한다.
    * null이면 일반 모드(전원 입력 가능 — 발언권 세부 제한은 서버가 판정).
    */
   condemnedId?: string | null;
   condemnedName?: string;
+  /** true면 이유 불문 전원 입력 불가 (밤에 악 진영이 아닌 경우 등) */
+  locked?: boolean;
+  lockedReason?: string;
   /** 서버 타이머 동기화 값 — 없으면 카운트다운 미표시 */
   timer?: CountdownTarget | null;
   onSend: (text: string) => void;
@@ -41,6 +47,8 @@ export function ChatWindow({
   myId,
   condemnedId = null,
   condemnedName,
+  locked = false,
+  lockedReason,
   timer = null,
   onSend,
 }: ChatWindowProps) {
@@ -53,14 +61,16 @@ export function ChatWindow({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length]);
 
-  const pleaMode = condemnedId !== null;
-  const canType = !pleaMode || condemnedId === myId;
+  const soloMode = condemnedId !== null;
+  const canType = !locked && (!soloMode || condemnedId === myId);
 
-  const placeholder = canType
-    ? pleaMode
-      ? '최후의 변론을 입력하세요… (Skip으로 조기 종료 가능)'
-      : '메시지를 입력하세요…'
-    : `최후의 변론 중 — ${condemnedName ?? '처형 대상자'}님만 발언할 수 있습니다`;
+  const placeholder = locked
+    ? (lockedReason ?? '지금은 채팅할 수 없습니다')
+    : canType
+      ? soloMode
+        ? '메시지를 입력하세요… (Skip으로 조기 종료 가능)'
+        : '메시지를 입력하세요…'
+      : `${condemnedName ?? '해당 플레이어'}님만 지금 발언할 수 있습니다`;
 
   function submit(e: { preventDefault(): void }) {
     e.preventDefault();

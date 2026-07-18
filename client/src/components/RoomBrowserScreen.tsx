@@ -1,6 +1,7 @@
 /**
  * 공개방 목록 — 로비 메뉴의 "게임 시작"에서 진입. 모집 중(비공개 아님·정원 미달·미시작)인
- * 방만 조회되며, 목록은 진입 시 + 새로고침 버튼으로만 갱신한다(실시간 push 아님).
+ * 방만 조회된다. 실시간 push는 아니고, 진입 시 + 새로고침 버튼 + 화면이 떠 있는 동안의
+ * 가벼운 주기적 폴링(4초)으로 갱신한다 — 다른 사람이 방금 만든 방이 안 보인다는 피드백 반영.
  */
 
 import { useEffect, useState } from 'react';
@@ -37,6 +38,12 @@ export function RoomBrowserScreen({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     void refresh();
+    // 4초 간격 자동 갱신 — 로딩 스피너 없이 조용히 목록만 교체
+    const interval = setInterval(() => {
+      void emitWithAck<ListAck>(SOCKET_EVENTS.roomList).then((ack) => setRooms(ack.rooms ?? []));
+    }, 4000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function createRoom() {

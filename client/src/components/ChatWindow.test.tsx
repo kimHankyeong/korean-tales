@@ -44,7 +44,14 @@ describe('채팅창 (requirements 6번 + 최후의 변론 5-5항)', () => {
     const input = screen.getByLabelText('채팅 입력') as HTMLInputElement;
     expect(input.disabled).toBe(true);
     expect(input.placeholder).toContain('초롱');
-    expect(input.placeholder).toContain('최후의 변론 중');
+    expect(input.placeholder).toContain('발언할 수 있습니다');
+  });
+
+  it('잠금 모드: 이유 불문 전원 입력창이 비활성화된다', () => {
+    renderChat({ locked: true, lockedReason: '밤에는 채팅할 수 없어요' });
+    const input = screen.getByLabelText('채팅 입력') as HTMLInputElement;
+    expect(input.disabled).toBe(true);
+    expect(input.placeholder).toBe('밤에는 채팅할 수 없어요');
   });
 
   it('최후의 변론 모드: 처형 대상자 본인은 입력할 수 있다', () => {

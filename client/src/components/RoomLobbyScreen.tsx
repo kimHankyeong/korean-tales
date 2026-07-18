@@ -4,17 +4,23 @@
  * room:create/room:join의 name은 서버가 계정 닉네임으로 대체해 무시한다.
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ROOM_OPTIONS,
   SOCKET_EVENTS,
+  type CharacterId,
   type Faction,
   type RoomSettingsPayload,
 } from '@korean-tales/shared';
 import { emitWithAck, getSocket } from '../lib/socket';
+import { useAuthStore } from '../store/authStore';
+import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
+import { AdminCharacterPickModal } from './AdminCharacterPickModal';
 import { BackButton } from './BackButton';
+import { LobbyChatBox } from './LobbyChatBox';
 import { SkillBookModal } from './SkillBookModal';
+import { SoundSettingsModal } from './SoundSettingsModal';
 
 interface RoomAck {
   ok: boolean;
@@ -33,6 +39,18 @@ export function RoomLobbyScreen() {
   const [busy, setBusy] = useState(false);
   const [faction, setFaction] = useState<Faction | null>(null);
   const [showSkillBook, setShowSkillBook] = useState(false);
+  const [showSound, setShowSound] = useState(false);
+  const [showCharacterPick, setShowCharacterPick] = useState(false);
+  const messages = useGameStore((s) => s.messages);
+  const applyChatMessage = useGameStore((s) => s.applyChatMessage);
+
+  useEffect(() => {
+    const socket = getSocket();
+    socket.on(SOCKET_EVENTS.chatMessage, applyChatMessage);
+    return () => {
+      socket.off(SOCKET_EVENTS.chatMessage, applyChatMessage);
+    };
+  }, [applyChatMessage]);
 
   async function updateSettings(patch: Partial<RoomSettingsPayload>) {
     setBusy(true);
@@ -63,11 +81,21 @@ export function RoomLobbyScreen() {
     await emitWithAck<RoomAck>(SOCKET_EVENTS.roomVisibility, { isPublic: !room.isPublic });
   }
 
+  async function startAsAdmin(characterId: CharacterId | null) {
+    setShowCharacterPick(false);
+    setBusy(true);
+    setError(null);
+    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomStart, { characterId: characterId ?? undefined });
+    setBusy(false);
+    if (!ack.ok) setError(ack.error ?? '게임을 시작할 수 없어요.');
+  }
+
   function goBack() {
     getSocket().emit(SOCKET_EVENTS.roomLeave);
     leaveRoom();
   }
 
+  const isAdmin = useAuthStore((s) => s.user?.isAdmin ?? false);
   const isHost = room.hostId === myId;
   const me = room.players.find((p) => p.id === myId);
   const myReady = me?.ready ?? false;
@@ -78,6 +106,14 @@ export function RoomLobbyScreen() {
       <BackButton onClick={goBack} />
 
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
+      {showSound && <SoundSettingsModal onClose={() => setShowSound(false)} />}
+      {showCharacterPick && (
+        <AdminCharacterPickModal
+          mode={room.settings.mode}
+          onPick={(characterId) => void startAsAdmin(characterId)}
+          onClose={() => setShowCharacterPick(false)}
+        />
+      )}
 
       <section className="flex-1 rounded-xl border border-slate-700 bg-slate-900 p-4 pt-12 md:pt-4">
         <div className="mb-1 flex items-center gap-2">
@@ -90,6 +126,14 @@ export function RoomLobbyScreen() {
             className="rounded-full border border-amber-500/50 bg-slate-800/90 px-2.5 py-1 text-[11px] font-bold text-amber-300 hover:bg-slate-700"
           >
             직업 설명
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSound(true)}
+            aria-label="음향 설정"
+            className="rounded-full border border-slate-500 bg-slate-800/90 px-2.5 py-1 text-xs hover:bg-slate-700"
+          >
+            🔊
           </button>
           {isHost && (
             <button
@@ -125,6 +169,17 @@ export function RoomLobbyScreen() {
           {myReady ? '준비 취소' : '준비하기'}
         </button>
 
+        {isAdmin && isHost && room.players.length !== room.settings.mode && (
+          <button
+            type="button"
+            disabled={busy || room.players.length === 0}
+            onClick={() => setShowCharacterPick(true)}
+            className="mt-2 w-full rounded-lg border border-amber-500 py-2 text-sm font-bold text-amber-300 disabled:opacity-50"
+          >
+            게임 시작 (관리자 — 정원 미달 허용, 직업 선택 가능)
+          </button>
+        )}
+
         <p className="mt-3 mb-1 text-xs text-slate-400">진영 선호 (배정을 보장하지 않음)</p>
         <div className="flex gap-2">
           {(Object.keys(FACTION_LABEL) as Faction[]).map((f) => (
@@ -144,6 +199,13 @@ export function RoomLobbyScreen() {
             {error}
           </p>
         )}
+
+        <div className="mt-3">
+          <LobbyChatBox
+            messages={messages}
+            onSend={(text) => void emitWithAck(SOCKET_EVENTS.chatSend, { text })}
+          />
+        </div>
       </section>
 
       <aside className="flex w-full shrink-0 flex-col gap-2 rounded-xl border border-slate-700 bg-slate-900 p-4 md:w-64">
