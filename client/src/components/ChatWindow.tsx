@@ -36,6 +36,11 @@ export interface ChatWindowProps {
   /** true면 이유 불문 전원 입력 불가 (밤에 악 진영이 아닌 경우 등) */
   locked?: boolean;
   lockedReason?: string;
+  /**
+   * 지금 이 창이 전송하는 채팅 채널 — 'EVIL'이면 낮 공개 채팅과 헷갈리지 않도록
+   * 헤더·테두리에 별도 표시를 준다(3·4번 섹션: 악 진영 전용 채널).
+   */
+  channel?: 'PUBLIC' | 'EVIL';
   /** 서버 타이머 동기화 값 — 없으면 카운트다운 미표시 */
   timer?: CountdownTarget | null;
   onSend: (text: string) => void;
@@ -49,6 +54,7 @@ export function ChatWindow({
   condemnedName,
   locked = false,
   lockedReason,
+  channel = 'PUBLIC',
   timer = null,
   onSend,
 }: ChatWindowProps) {
@@ -63,6 +69,7 @@ export function ChatWindow({
 
   const soloMode = condemnedId !== null;
   const canType = !locked && (!soloMode || condemnedId === myId);
+  const evilChannel = channel === 'EVIL';
 
   const placeholder = locked
     ? (lockedReason ?? '지금은 채팅할 수 없습니다')
@@ -82,12 +89,25 @@ export function ChatWindow({
 
   return (
     <section
-      className="flex h-full min-h-0 flex-col rounded-xl border border-slate-700 bg-slate-900"
-      aria-label="채팅창"
+      className={`flex h-full min-h-0 flex-col rounded-xl border bg-slate-900 ${
+        evilChannel ? 'border-red-800/70 ring-1 ring-red-900/40' : 'border-slate-700'
+      }`}
+      aria-label={evilChannel ? '악 진영 전용 채팅창' : '채팅창'}
     >
-      {/* 헤더: 낮/밤 배지 + 카운트다운 */}
-      <header className="flex items-center justify-between border-b border-slate-700 px-3 py-2">
-        <PhaseBadge phase={phase} />
+      {/* 헤더: 낮/밤 배지 + (밤이면) 악 진영 전용 채널 표시 + 카운트다운 */}
+      <header
+        className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${
+          evilChannel ? 'border-red-900/50 bg-red-950/20' : 'border-slate-700'
+        }`}
+      >
+        <div className="flex items-center gap-2">
+          <PhaseBadge phase={phase} />
+          {evilChannel && (
+            <span className="rounded-full bg-red-900/60 px-2 py-0.5 text-[11px] font-bold text-red-200">
+              🩸 악 진영 전용 채널
+            </span>
+          )}
+        </div>
         {timer && <CountdownText target={timer} />}
       </header>
 

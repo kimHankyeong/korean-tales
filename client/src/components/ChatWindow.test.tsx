@@ -63,6 +63,16 @@ describe('채팅창 (requirements 6번 + 최후의 변론 5-5항)', () => {
     expect(onSend).toHaveBeenCalledWith('저는 결백합니다');
   });
 
+  it('악 진영 전용 채널(channel="EVIL")이면 낮 채팅과 구분되는 배지가 표시된다', () => {
+    renderChat({ phase: 'NIGHT', channel: 'EVIL' });
+    expect(screen.getByText('🩸 악 진영 전용 채널')).toBeTruthy();
+  });
+
+  it('일반(공개) 채널이면 악 진영 배지가 표시되지 않는다', () => {
+    renderChat({ phase: 'NIGHT', channel: 'PUBLIC' });
+    expect(screen.queryByText('🩸 악 진영 전용 채널')).toBeNull();
+  });
+
   it('카운트다운 문구가 표시된다', () => {
     renderChat({
       timer: { label: '토론 시간', endsAt: Date.now() + 90_000, serverNow: Date.now() },

@@ -48,9 +48,55 @@ export function AppRouter() {
     socket.on(SOCKET_EVENTS.roomState, onRoomState);
     socket.on('connect_error', onConnectError);
 
+    // 게임 이벤트 구독은 GameScreen이 아니라 여기(항상 마운트돼 있는 라우터)에 둔다 —
+    // 서버는 게임 시작 시 game:role을 room:state보다 먼저 보내는데, GameScreen은
+    // room.inGame이 true로 바뀐 뒤에야(=room:state 수신 이후) 마운트되므로, 리스너를
+    // GameScreen에 등록하면 room:state보다 먼저 도착하는 game:role을 놓쳐 직업을
+    // 영원히 확인할 수 없는 문제가 있었다(game:state는 페이즈마다 재전송돼 자연 복구되지만
+    // game:role은 1회성이라 복구되지 않음).
+    const {
+      applyRole,
+      applyGameState,
+      applyGameOver,
+      applyChatMessage,
+      applyTimerSync,
+      clearTimer,
+      applyInvestigation,
+      applySurrenderProgress,
+      applyFlowerOptions,
+      applyAdminRoster,
+      addSystemMessage,
+    } = useGameStore.getState();
+
+    const onInvestigation: Parameters<typeof socket.on>[1] = (payload) => {
+      applyInvestigation(payload);
+      addSystemMessage(`투사 결과 — ${payload.result === 'EVIL' ? '악의 기운이 느껴진다' : '평범한 기운이다'}`);
+    };
+
+    socket.on(SOCKET_EVENTS.gameRole, applyRole);
+    socket.on(SOCKET_EVENTS.gameState, applyGameState);
+    socket.on(SOCKET_EVENTS.gameOver, applyGameOver);
+    socket.on(SOCKET_EVENTS.chatMessage, applyChatMessage);
+    socket.on(SOCKET_EVENTS.timerSync, applyTimerSync);
+    socket.on(SOCKET_EVENTS.timerClear, clearTimer);
+    socket.on(SOCKET_EVENTS.gameInvestigation, onInvestigation);
+    socket.on(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
+    socket.on(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
+    socket.on(SOCKET_EVENTS.adminRoster, applyAdminRoster);
+
     return () => {
       socket.off(SOCKET_EVENTS.roomState, onRoomState);
       socket.off('connect_error', onConnectError);
+      socket.off(SOCKET_EVENTS.gameRole, applyRole);
+      socket.off(SOCKET_EVENTS.gameState, applyGameState);
+      socket.off(SOCKET_EVENTS.gameOver, applyGameOver);
+      socket.off(SOCKET_EVENTS.chatMessage, applyChatMessage);
+      socket.off(SOCKET_EVENTS.timerSync, applyTimerSync);
+      socket.off(SOCKET_EVENTS.timerClear, clearTimer);
+      socket.off(SOCKET_EVENTS.gameInvestigation, onInvestigation);
+      socket.off(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
+      socket.off(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
+      socket.off(SOCKET_EVENTS.adminRoster, applyAdminRoster);
     };
   }, [status, applyRoomState, signOut]);
 
