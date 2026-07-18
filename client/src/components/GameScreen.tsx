@@ -11,6 +11,7 @@ import { emitWithAck, getSocket } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
+import { AdminPuppetPanel } from './AdminPuppetPanel';
 import { ChatWindow } from './ChatWindow';
 import { GameOverScreen } from './GameOverScreen';
 import { MyPage } from './MyPage';
@@ -22,6 +23,10 @@ import { SoundSettingsModal } from './SoundSettingsModal';
 
 function sendAction(action: ClientGameAction) {
   void emitWithAck(SOCKET_EVENTS.gameAction, action);
+}
+
+function sendPuppetAction(playerId: string, action: ClientGameAction) {
+  void emitWithAck(SOCKET_EVENTS.adminPuppetAction, { playerId, action });
 }
 
 export function GameScreen() {
@@ -49,48 +54,9 @@ export function GameScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  useEffect(() => {
-    const socket = getSocket();
-    const {
-      applyRole,
-      applyGameState,
-      applyGameOver,
-      applyChatMessage,
-      applyTimerSync,
-      clearTimer,
-      applyInvestigation,
-      applySurrenderProgress,
-      applyFlowerOptions,
-      addSystemMessage,
-    } = useGameStore.getState();
-
-    const onInvestigation: Parameters<typeof socket.on>[1] = (payload) => {
-      applyInvestigation(payload);
-      addSystemMessage(`투사 결과 — ${payload.result === 'EVIL' ? '악의 기운이 느껴진다' : '평범한 기운이다'}`);
-    };
-
-    socket.on(SOCKET_EVENTS.gameRole, applyRole);
-    socket.on(SOCKET_EVENTS.gameState, applyGameState);
-    socket.on(SOCKET_EVENTS.gameOver, applyGameOver);
-    socket.on(SOCKET_EVENTS.chatMessage, applyChatMessage);
-    socket.on(SOCKET_EVENTS.timerSync, applyTimerSync);
-    socket.on(SOCKET_EVENTS.timerClear, clearTimer);
-    socket.on(SOCKET_EVENTS.gameInvestigation, onInvestigation);
-    socket.on(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
-    socket.on(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
-
-    return () => {
-      socket.off(SOCKET_EVENTS.gameRole, applyRole);
-      socket.off(SOCKET_EVENTS.gameState, applyGameState);
-      socket.off(SOCKET_EVENTS.gameOver, applyGameOver);
-      socket.off(SOCKET_EVENTS.chatMessage, applyChatMessage);
-      socket.off(SOCKET_EVENTS.timerSync, applyTimerSync);
-      socket.off(SOCKET_EVENTS.timerClear, clearTimer);
-      socket.off(SOCKET_EVENTS.gameInvestigation, onInvestigation);
-      socket.off(SOCKET_EVENTS.surrenderProgress, applySurrenderProgress);
-      socket.off(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
-    };
-  }, []);
+  // 게임 이벤트(game:role 등) 구독은 AppRouter.tsx에서 항상 마운트된 상태로 처리한다 —
+  // game:role이 room:state보다 먼저 도착하는데, GameScreen은 room:state 수신 후에야
+  // 마운트되므로 여기서 구독하면 그 첫 game:role을 놓친다(직업 확인 불가 버그의 원인).
 
   // 다시하기 — 방은 나가지 않고 결과 화면만 닫는다. 서버가 게임 종료 시 방을 자동 비공개
   // 전환 + 전원 준비 초기화해두므로, AppRouter가 곧바로 같은 방의 준비 화면을 보여준다.
@@ -156,6 +122,7 @@ export function GameScreen() {
           condemnedName={store.players.find((p) => p.id === store.condemnedId)?.name}
           locked={chatLocked}
           lockedReason="밤에는 채팅할 수 없어요 (악 진영은 전용 채널로 대화해요)"
+          channel={isNight && isEvil ? 'EVIL' : 'PUBLIC'}
           timer={store.timer}
           onSend={(text) =>
             void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text })
@@ -164,6 +131,14 @@ export function GameScreen() {
       </div>
 
       <PlayerListPanel players={store.players} />
+
+      <AdminPuppetPanel
+        roster={store.adminRoster}
+        publicState={store.publicState}
+        timerPhaseKey={store.timer?.label ?? null}
+        flowerOptions={store.flowerOptions}
+        onSubmit={sendPuppetAction}
+      />
 
       <aside className="flex w-full shrink-0 flex-col gap-1.5 md:w-64">
         <button

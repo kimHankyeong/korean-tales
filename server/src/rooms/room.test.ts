@@ -153,6 +153,85 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     expect(room.inGame).toBe(false);
   });
 
+  it('관리자는 fillVirtual로 남은 정원을 가상 플레이어로 채워 시작할 수 있다 (13번)', () => {
+    const { room } = makeRoom();
+    // u1(방장) 혼자, fillVirtual=true → 나머지 8명은 가상 플레이어로 채워짐
+    expect(room.startGame('u1', true, undefined, true)).toBeNull();
+    expect(room.inGame).toBe(true);
+    expect(room.players).toHaveLength(9);
+    expect(room.players.filter((p) => p.name.startsWith('가상플레이어'))).toHaveLength(8);
+  });
+
+  it('가상 플레이어를 포함해 게임이 시작되면 관리자에게만 전원의 배정(admin:roster)이 전송된다', () => {
+    const { room, emitter } = makeRoom();
+    expect(room.startGame('u1', true, undefined, true)).toBeNull();
+    const rosterEvents = emitter.playerEventsOf('u1', SOCKET_EVENTS.adminRoster);
+    expect(rosterEvents).toHaveLength(1);
+    const roster = rosterEvents[0]!.payload as { players: { playerId: string; isVirtual: boolean }[] };
+    expect(roster.players).toHaveLength(9);
+    expect(roster.players.filter((p) => p.isVirtual)).toHaveLength(8);
+    // 가상 플레이어가 없는 일반(비관리자) 시작에서는 admin:roster가 전송되지 않는다
+    const { room: normalRoom, emitter: normalEmitter } = makeRoom();
+    fillRoom(normalRoom);
+    expect(normalRoom.startGame('u1')).toBeNull();
+    expect(normalEmitter.playerEventsOf('u1', SOCKET_EVENTS.adminRoster)).toHaveLength(0);
+  });
+
+  it('관리자가 가상 플레이어 없이 시작해도 admin:roster는 (전원 isVirtual:false로) 전송된다 — 이전 게임의 잔여 목록이 남지 않게', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room); // 9명 정원 채움, fillVirtual 없이 관리자로 시작
+    expect(room.startGame('u1', true)).toBeNull();
+    const rosterEvents = emitter.playerEventsOf('u1', SOCKET_EVENTS.adminRoster);
+    expect(rosterEvents).toHaveLength(1);
+    const roster = rosterEvents[0]!.payload as { players: { isVirtual: boolean }[] };
+    expect(roster.players).toHaveLength(9);
+    expect(roster.players.every((p) => !p.isVirtual)).toBe(true);
+  });
+
+  it('관리자는 admin:puppetAction으로 가상 플레이어를 대신해 액션을 제출할 수 있다 (13번)', () => {
+    const { room, emitter } = makeRoom();
+    expect(room.startGame('u1', true, undefined, true)).toBeNull();
+    passNightZero(room); // firstMorning.candidacy(9인) 또는 day.personalSpeech(7인) 직전까지
+
+    const roster = emitter.playerEventsOf('u1', SOCKET_EVENTS.adminRoster).at(-1)!
+      .payload as { players: { playerId: string; isVirtual: boolean }[] };
+    const virtualId = roster.players.find((p) => p.isVirtual)!.playerId;
+
+    // 조언자 출마 신청(CANDIDACY_APPLY)은 본인 명의만 허용되는 액션 — 가상 플레이어 명의로 제출
+    expect(
+      room.handlePuppetAction(true, virtualId, { type: 'CANDIDACY_APPLY', playerId: virtualId }),
+    ).toBeNull();
+  });
+
+  it('admin:puppetAction은 관리자가 아니거나 가상 플레이어가 아닌 대상이면 거부된다', () => {
+    const { room } = makeRoom();
+    expect(room.startGame('u1', true, undefined, true)).toBeNull();
+    passNightZero(room);
+
+    expect(
+      room.handlePuppetAction(false, 'virtual:TEST01:1', { type: 'CANDIDACY_APPLY', playerId: 'virtual:TEST01:1' }),
+    ).toBe('NOT_ALLOWED'); // 관리자 아님
+    expect(
+      room.handlePuppetAction(true, 'u1', { type: 'CANDIDACY_APPLY', playerId: 'u1' }),
+    ).toBe('NOT_ALLOWED'); // 실제 플레이어(u1)는 가상 플레이어가 아님
+  });
+
+  it('게임이 끝나면 가상 플레이어는 로비에서 제거되어 다음 게임에 남지 않는다', () => {
+    const { room, emitter } = makeRoom();
+    expect(room.startGame('u1', true, undefined, true)).toBeNull();
+    passNightZero(room);
+    const roster = emitter.playerEventsOf('u1', SOCKET_EVENTS.adminRoster).at(-1)!
+      .payload as { players: { playerId: string; faction: string }[] };
+    const evilIds = roster.players.filter((p) => p.faction === 'EVIL').map((p) => p.playerId);
+
+    // 악 팀 전원(가상 플레이어 포함) 투항 동의 → 즉시 게임 종료(선 승리) → endSession
+    for (const id of evilIds) expect(room.agreeSurrender(id)).toBeNull();
+
+    expect(room.inGame).toBe(false);
+    expect(room.players).toHaveLength(1); // u1만 남고 가상 플레이어는 전부 제거됨
+    expect(room.players.some((p) => p.name.startsWith('가상플레이어'))).toBe(false);
+  });
+
   it('정원이 다 차고 전원 준비되면 방장의 시작 클릭 없이 자동으로 게임이 시작된다', () => {
     const { room } = makeRoom();
     fillRoom(room); // 9명 참

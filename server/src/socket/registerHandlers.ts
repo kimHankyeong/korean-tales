@@ -118,11 +118,13 @@ export function registerHandlers(
 
     socket.on(
       SOCKET_EVENTS.roomStart,
-      (data: { characterId?: CharacterId } | undefined, ack?: Ack) => {
+      (data: { characterId?: CharacterId; fillVirtual?: boolean } | undefined, ack?: Ack) => {
         const room = manager.roomOf(playerId);
         const identity = identityOf(socket);
         const isAdmin = identity.kind === 'USER' && identity.isAdmin;
-        const error = room ? room.startGame(playerId, isAdmin, data?.characterId) : 'NOT_IN_ROOM';
+        const error = room
+          ? room.startGame(playerId, isAdmin, data?.characterId, !!data?.fillVirtual)
+          : 'NOT_IN_ROOM';
         ack?.(error ? { ok: false, error } : { ok: true });
       },
     );
@@ -144,6 +146,21 @@ export function registerHandlers(
       const error = room ? room.handleAction(playerId, action) : 'NOT_IN_ROOM';
       ack?.(error ? { ok: false, error } : { ok: true });
     });
+
+    // 관리자가 가상 플레이어를 대신 조작 (13번)
+    socket.on(
+      SOCKET_EVENTS.adminPuppetAction,
+      (data: { playerId?: string; action?: ClientGameAction } | undefined, ack?: Ack) => {
+        const room = manager.roomOf(playerId);
+        const identity = identityOf(socket);
+        const isAdmin = identity.kind === 'USER' && identity.isAdmin;
+        const error =
+          room && data?.playerId && data.action
+            ? room.handlePuppetAction(isAdmin, data.playerId, data.action)
+            : 'NOT_ALLOWED';
+        ack?.(error ? { ok: false, error } : { ok: true });
+      },
+    );
 
     socket.on(
       SOCKET_EVENTS.chatSend,

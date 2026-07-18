@@ -81,11 +81,14 @@ export function RoomLobbyScreen() {
     await emitWithAck<RoomAck>(SOCKET_EVENTS.roomVisibility, { isPublic: !room.isPublic });
   }
 
-  async function startAsAdmin(characterId: CharacterId | null) {
+  async function startAsAdmin(characterId: CharacterId | null, fillVirtual: boolean) {
     setShowCharacterPick(false);
     setBusy(true);
     setError(null);
-    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomStart, { characterId: characterId ?? undefined });
+    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomStart, {
+      characterId: characterId ?? undefined,
+      fillVirtual,
+    });
     setBusy(false);
     if (!ack.ok) setError(ack.error ?? '게임을 시작할 수 없어요.');
   }
@@ -110,7 +113,7 @@ export function RoomLobbyScreen() {
       {showCharacterPick && (
         <AdminCharacterPickModal
           mode={room.settings.mode}
-          onPick={(characterId) => void startAsAdmin(characterId)}
+          onPick={(characterId, fillVirtual) => void startAsAdmin(characterId, fillVirtual)}
           onClose={() => setShowCharacterPick(false)}
         />
       )}

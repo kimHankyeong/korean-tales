@@ -1,8 +1,11 @@
 /**
  * 관리자 전용 — 정원 미달로 혼자 테스트할 때 직업을 직접 골라 배정받는 모달 (13번).
  * 현재 방 모드(7인/9인)의 로스터만 표시하며, "무작위 배정"으로 기존 랜덤 배정도 유지한다.
+ * "가상 플레이어로 정원 채우기"를 켜면 나머지 자리가 가상 플레이어로 채워지고,
+ * 게임 중 관리자가 AdminPuppetPanel로 그들의 투표·발언·스킬을 대신 지정할 수 있다.
  */
 
+import { useState } from 'react';
 import { CHARACTER_BY_ID, FACTION_META, ROSTER_BY_MODE, type CharacterId, type PlayerMode } from '@korean-tales/shared';
 import { CloseButton } from './CloseButton';
 
@@ -12,10 +15,11 @@ export function AdminCharacterPickModal({
   onClose,
 }: {
   mode: PlayerMode;
-  onPick: (characterId: CharacterId | null) => void;
+  onPick: (characterId: CharacterId | null, fillVirtual: boolean) => void;
   onClose: () => void;
 }) {
   const roster = ROSTER_BY_MODE[mode];
+  const [fillVirtual, setFillVirtual] = useState(false);
 
   return (
     <div
@@ -33,7 +37,7 @@ export function AdminCharacterPickModal({
               <button
                 key={id}
                 type="button"
-                onClick={() => onPick(id)}
+                onClick={() => onPick(id, fillVirtual)}
                 className="rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-left hover:bg-slate-700"
               >
                 <span className="block text-sm font-semibold text-slate-100">{character.name}</span>
@@ -44,11 +48,21 @@ export function AdminCharacterPickModal({
         </div>
         <button
           type="button"
-          onClick={() => onPick(null)}
+          onClick={() => onPick(null, fillVirtual)}
           className="mt-3 w-full rounded-lg border border-slate-500 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
         >
           무작위 배정
         </button>
+
+        <label className="mt-3 flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-800/60 px-3 py-2 text-xs text-slate-300">
+          <input
+            type="checkbox"
+            checked={fillVirtual}
+            onChange={(e) => setFillVirtual(e.target.checked)}
+            className="size-3.5"
+          />
+          가상 플레이어로 정원 채우기 (게임 중 대신 투표·발언·스킬 조작 가능)
+        </label>
       </div>
     </div>
   );

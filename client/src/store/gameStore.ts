@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import type {
+  AdminRosterPayload,
   ChatMessagePayload,
   FlowerOptionsPayload,
   GameOverPayload,
@@ -49,6 +50,8 @@ export interface GameUiState {
   surrenderProgress: SurrenderProgressPayload | null;
   /** 자청비 본인에게만 오는 부활꽃 대상 후보 */
   flowerOptions: FlowerOptionsPayload | null;
+  /** 관리자 전용 — 가상 플레이어를 포함한 전원의 배정 (13번 — 없으면 빈 배열) */
+  adminRoster: AdminRosterPayload['players'];
 
   setMyId(id: string): void;
   setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
@@ -63,6 +66,7 @@ export interface GameUiState {
   applyInvestigation(payload: InvestigationPayload): void;
   applySurrenderProgress(payload: SurrenderProgressPayload | null): void;
   applyFlowerOptions(payload: FlowerOptionsPayload | null): void;
+  applyAdminRoster(payload: AdminRosterPayload): void;
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -107,15 +111,20 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   lastInvestigation: null,
   surrenderProgress: null,
   flowerOptions: null,
+  adminRoster: [],
 
   setMyId: (id) => set({ myId: id }),
 
   setMyProfile: (profile) => set({ myProfile: profile }),
 
+  // role·adminRoster는 여기서 초기화하지 않는다 — 서버가 game:role/admin:roster를
+  // room:state보다 먼저 보내고, 이 리셋은 room:state 수신(=GameScreen 마운트) 이후에
+  // 실행되므로 이미 도착한 값을 지워버리게 된다. 관리자가 시작한 게임은 매번 새
+  // admin:roster를 보내주므로(가상 플레이어가 없어도) 다음 게임에서 자연히 갱신된다.
+  // AppRouter.tsx 참고.
   resetForRealGame: () =>
     set({
       publicState: null,
-      role: null,
       gameOverResult: null,
       lastInvestigation: null,
       surrenderProgress: null,
@@ -127,6 +136,8 @@ export const useGameStore = create<GameUiState>((set, get) => ({
     }),
 
   applyRole: (role) => set({ role }),
+
+  applyAdminRoster: (payload) => set({ adminRoster: payload.players }),
 
   applyGameState: (publicState) =>
     set((state) => {

@@ -54,6 +54,10 @@ export const SOCKET_EVENTS = {
   gameFlowerOptions: 'game:flowerOptions',
   /** S→방 전체: 게임 종료 + 역할 전체 공개 */
   gameOver: 'game:over',
+  /** C→S (ack, 관리자 전용): 가상 플레이어 대신 액션 제출 { playerId, action } */
+  adminPuppetAction: 'admin:puppetAction',
+  /** S→관리자 본인만: 가상 플레이어 포함 전원의 캐릭터 배정 (테스트용 전지적 시점) */
+  adminRoster: 'admin:roster',
 
   /* ── 채팅 ── */
   /** C→S: { channel, text } — EVIL 채널은 악 진영 생존자만, 밤에만 */
@@ -189,6 +193,25 @@ export interface PlayerGameResult {
 export interface GameOverPayload {
   winner: Faction;
   roles: PlayerGameResult[];
+}
+
+/**
+ * 관리자 전용(13번 — 가상 플레이어 조작) — 관리자가 정원을 가상 플레이어로 채워
+ * 혼자 테스트할 때, 가상 플레이어를 포함한 전원의 배정을 관리자 본인에게만 보내
+ * 각자의 입장에서 투표·발언 스킵·스킬 사용을 대신 지정할 수 있게 한다.
+ */
+export interface AdminRosterEntry {
+  playerId: string;
+  name: string;
+  isVirtual: boolean;
+  characterId: CharacterId;
+  faction: Faction;
+  seat: number;
+  alive: boolean;
+}
+
+export interface AdminRosterPayload {
+  players: AdminRosterEntry[];
 }
 
 /* ── 채팅 ── */

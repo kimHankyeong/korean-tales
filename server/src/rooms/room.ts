@@ -98,6 +98,11 @@ export class Room {
   private surrender: SurrenderState | null = null;
   private readonly surrenderTimer = new PhaseTimer();
   private lastInvestigation: InvestigationRecord | null = null;
+  /** 관리자가 정원을 채우려고 만든 가상 플레이어 id들 (13번 — 실제 소켓 없음, 관리자가 대신 조작) */
+  private readonly virtualPlayerIds = new Set<string>();
+  private virtualCounter = 0;
+  /** 가상 플레이어 조작 권한을 가진 관리자 — virtualPlayerIds가 비어 있으면 의미 없음 */
+  private adminPlayerId: string | null = null;
 
   constructor(
     code: string,
@@ -227,20 +232,48 @@ export class Room {
 
   /* ── 게임 시작 ────────────────────────────────── */
 
+  /** 정원 미달 관리자 시작 전용 — 가상 플레이어(가짜 슬롯)를 만들어 채운다. 실제 소켓이 없으므로
+   *  toPlayer 전송은 그냥 아무에게도 닿지 않고 사라진다(안전). 이름은 프론트에서 구분 가능하게. */
+  private fillWithVirtualPlayers(count: number): void {
+    for (let i = 0; i < count; i++) {
+      this.virtualCounter += 1;
+      const id = `virtual:${this.code}:${this.virtualCounter}`;
+      this.virtualPlayerIds.add(id);
+      this.players.push({
+        id,
+        name: `가상플레이어${this.virtualCounter}`,
+        factionPreference: null,
+        avatarUrl: null,
+        ready: true,
+      });
+    }
+  }
+
   /**
    * @param isAdmin true(ADMIN_EMAILS 계정)면 정원 미달이어도 시작을 허용한다
    * (13번 — 봇 없이 실제 참여 인원만으로 혼자 테스트 가능하게).
    * @param characterId 관리자 전용 — 지정하면 요청자 본인이 그 캐릭터로 확정 배정된다(테스트 목적).
    *   일반 유저가 보내도 무시된다(isAdmin이 아니면 서버가 반영하지 않음).
+   * @param fillVirtual 관리자 전용 — true면 남은 정원을 가상 플레이어로 채워 시작한다.
+   *   가상 플레이어는 admin:puppetAction으로 관리자가 대신 투표·발언 스킵·스킬을 지정해야 진행된다.
    */
-  startGame(requesterId: string, isAdmin = false, characterId?: CharacterId): RoomError | null {
+  startGame(
+    requesterId: string,
+    isAdmin = false,
+    characterId?: CharacterId,
+    fillVirtual = false,
+  ): RoomError | null {
     if (requesterId !== this.hostId) return 'NOT_HOST';
     if (this.inGame) return 'ALREADY_IN_GAME';
+    if (isAdmin && fillVirtual && this.players.length < this.settings.mode) {
+      this.fillWithVirtualPlayers(this.settings.mode - this.players.length);
+    }
     if (this.players.length === 0) return 'NOT_ENOUGH_PLAYERS';
     if (!isAdmin && this.players.length !== this.settings.mode) return 'NOT_ENOUGH_PLAYERS';
     if (isAdmin && characterId && !ROSTER_BY_MODE[this.settings.mode].includes(characterId)) {
       return 'INVALID_CHARACTER';
     }
+    if (isAdmin) this.adminPlayerId = requesterId;
     const fixedCharacter = isAdmin && characterId ? { playerId: requesterId, characterId } : undefined;
     return this.beginGame(isAdmin, fixedCharacter);
   }
@@ -298,6 +331,7 @@ export class Room {
       });
     }
 
+    // session.start()가 onSnapshot을 1회 호출하며 broadcastAdminRoster까지 함께 처리한다
     this.session.start();
     this.broadcastRoomState();
     this.broadcastPublicState(this.session.getSnapshot());
@@ -316,18 +350,44 @@ export class Room {
     this.emitter.toRoom(SOCKET_EVENTS.gameState, toPublicGameState(snapshot, this.playerMeta()));
   }
 
+  /**
+   * 관리자가 시작한 게임이면 전원의 배정을 관리자 본인에게만 알려준다(13번 — 전지적 테스트 시점).
+   * 가상 플레이어가 없어도(일반 정원으로 시작한 관리자여도) 매번 새로 보낸다 — 클라이언트가
+   * "이번 게임엔 조작할 가상 플레이어가 없다"를 알 수 있어야 이전 게임의 목록이 남지 않는다.
+   */
+  private broadcastAdminRoster(players: readonly GamePlayer[]): void {
+    if (!this.adminPlayerId) return;
+    const meta = this.playerMeta();
+    this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.adminRoster, {
+      players: players.map((p) => ({
+        playerId: p.id,
+        name: meta[p.id]?.name ?? p.id,
+        isVirtual: this.virtualPlayerIds.has(p.id),
+        characterId: p.characterId,
+        faction: p.faction,
+        seat: p.seat,
+        alive: p.alive,
+      })),
+    });
+  }
+
   private onSnapshot(snapshot: GameSnapshot): void {
-    // 해태 투사 결과 — 본인에게만 (새 결과가 기록된 경우에만 1회)
+    // 해태 투사 결과 — 본인에게만 (새 결과가 기록된 경우에만 1회). 해태가 가상 플레이어면
+    // 실제 소켓이 없어 결과를 볼 수 없으므로, 대신 조작해야 할 관리자에게도 함께 보낸다
     const investigation = snapshot.context.lastInvestigation;
     if (investigation && investigation !== this.lastInvestigation) {
       const haetae = snapshot.context.players.find((p) => p.characterId === 'haetae');
       if (haetae) {
         this.emitter.toPlayer(haetae.id, SOCKET_EVENTS.gameInvestigation, { ...investigation });
+        if (this.virtualPlayerIds.has(haetae.id) && this.adminPlayerId) {
+          this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameInvestigation, { ...investigation });
+        }
       }
     }
     this.lastInvestigation = investigation;
 
-    // 자청비 부활꽃 대상 후보 — 그날 밤 악 진영 킬 사망자만 (본인에게만, 5번 섹션)
+    // 자청비 부활꽃 대상 후보 — 그날 밤 악 진영 킬 사망자만 (본인에게만, 5번 섹션).
+    // 자청비가 가상 플레이어면 마찬가지로 관리자에게도 보내야 대신 선택할 수 있다
     if (phasePath(snapshot.value) === 'day.flowerDecision') {
       const jacheongbi = snapshot.context.players.find((p) => p.characterId === 'jacheongbi');
       if (jacheongbi?.alive) {
@@ -342,10 +402,14 @@ export class Room {
           revivableTargetIds.push(snapshot.context.dokkaebiSavedTargetId);
         }
         this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+        if (this.virtualPlayerIds.has(jacheongbi.id) && this.adminPlayerId) {
+          this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+        }
       }
     }
 
     this.broadcastPublicState(snapshot);
+    this.broadcastAdminRoster(snapshot.context.players);
 
     // 게임 종료 — 이때만 역할 전체 공개 + 개인별 승패 귀속 (중립은 생존 시 승리 팀 합류)
     if (snapshot.status === 'done' && snapshot.context.winner) {
@@ -365,6 +429,15 @@ export class Room {
     this.lastInvestigation = null;
     this.surrenderTimer.cancel();
     this.surrender = null;
+    // 가상 플레이어는 실제 사람이 아니므로 게임이 끝나면 로비에서 제거한다 —
+    // 남겨두면 아무도 대신 준비를 눌러줄 수 없어 자동 시작이 영원히 막힌다
+    if (this.virtualPlayerIds.size > 0) {
+      this.players = this.players.filter((p) => !this.virtualPlayerIds.has(p.id));
+      this.virtualPlayerIds.clear();
+    }
+    // adminPlayerId는 매 게임 시작마다 새로 정해진다 — 다음 시작이 관리자가 아니면
+    // (또는 다른 사람이 방장을 승계했으면) 이전 게임의 롤 목록을 계속 받으면 안 된다
+    this.adminPlayerId = null;
     // 재시작(다시하기) 시 낯선 사람이 끼어들지 못하도록 자동 비공개 전환 + 전원 재준비 요구
     this.isPublic = false;
     this.resetReady();
@@ -376,6 +449,19 @@ export class Room {
   handleAction(senderId: string, action: ClientGameAction): RoomError | null {
     if (!this.session) return 'NOT_IN_ROOM';
     if (!isActionAllowed(senderId, action, this.session.getSnapshot())) return 'NOT_ALLOWED';
+    this.session.send(action);
+    return null;
+  }
+
+  /**
+   * 관리자가 가상 플레이어를 대신해 액션을 제출한다(13번). 실제 발신자는 관리자 소켓이지만,
+   * 권한 판정은 가상 플레이어의 id로 그대로 isActionAllowed를 태워 기존 로직을 재사용한다
+   * (본인 명의 강제·캐릭터 전용 스킬 등 검증이 자동으로 그 가상 플레이어 기준으로 적용됨).
+   */
+  handlePuppetAction(isAdmin: boolean, targetPlayerId: string, action: ClientGameAction): RoomError | null {
+    if (!this.session) return 'NOT_IN_ROOM';
+    if (!isAdmin || !this.virtualPlayerIds.has(targetPlayerId)) return 'NOT_ALLOWED';
+    if (!isActionAllowed(targetPlayerId, action, this.session.getSnapshot())) return 'NOT_ALLOWED';
     this.session.send(action);
     return null;
   }
