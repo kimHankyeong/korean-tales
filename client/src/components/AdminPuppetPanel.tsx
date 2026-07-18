@@ -106,7 +106,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
   return (
     <aside
       aria-label="관리자 — 가상 플레이어 조작"
-      className="flex w-full shrink-0 flex-col gap-2 rounded-xl border border-amber-700/60 bg-slate-900 p-3 md:w-72"
+      className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-amber-700/60 bg-slate-900 p-3 landscape:w-56 md:w-72"
     >
       <p className="text-xs font-bold text-amber-300">🎮 가상 플레이어 조작 (관리자)</p>
 

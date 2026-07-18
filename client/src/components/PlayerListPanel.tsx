@@ -1,23 +1,28 @@
 /**
  * 플레이어 목록 패널 — requirements 6번: "우측, 화면 1/6 크기, 프로필 + 배정 번호 표시".
  * 프로필은 계정 프로필 사진(Avatar) 사용, 미설정/게스트는 기본 아바타 (11번 게임 내 연동).
+ * 본인을 제외한 각 프로필 사진 옆에는 내가 추측한 직업을 이모지로 메모할 수 있다(SuspicionMark).
  */
 
 import type { PublicPlayerState } from '@korean-tales/shared';
 import { Avatar } from './Avatar';
+import { SuspicionMark } from './SuspicionMark';
 
-export function PlayerListPanel({ players }: { players: PublicPlayerState[] }) {
+export function PlayerListPanel({ players, myId }: { players: PublicPlayerState[]; myId?: string }) {
   return (
     <aside
       aria-label="플레이어 목록"
-      className="flex w-full shrink-0 flex-col gap-1 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 md:w-[16.7vw] md:min-w-40"
+      className="flex w-full shrink-0 flex-col gap-1 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 landscape:w-48 landscape:min-w-40 md:w-[16.7vw] md:min-w-40"
     >
       {players.map((p) => (
         <div
           key={p.id}
           className={`flex items-center gap-2 rounded-lg px-2 py-1 ${p.alive ? '' : 'opacity-45'}`}
         >
-          <Avatar name={p.name} url={p.avatarUrl} size={30} />
+          <div className="relative shrink-0">
+            <Avatar name={p.name} url={p.avatarUrl} size={30} />
+            {p.id !== myId && <SuspicionMark playerId={p.id} />}
+          </div>
           <span className="truncate text-sm text-slate-100">
             <b className="mr-1 text-amber-300">{p.seat}번</b>
             {p.name}

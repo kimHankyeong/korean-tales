@@ -105,7 +105,7 @@ export function RoomLobbyScreen() {
   const readyCount = room.players.filter((p) => p.ready).length;
 
   return (
-    <main className="flex h-screen flex-col gap-4 bg-slate-950 p-4 text-slate-100 md:flex-row">
+    <main className="flex h-screen flex-col gap-4 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-hidden md:flex-row">
       <BackButton onClick={goBack} />
 
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
@@ -118,7 +118,7 @@ export function RoomLobbyScreen() {
         />
       )}
 
-      <section className="flex-1 rounded-xl border border-slate-700 bg-slate-900 p-4 pt-12 md:pt-4">
+      <section className="flex-1 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-4 pt-12 md:pt-4">
         <div className="mb-1 flex items-center gap-2">
           <h1 className="text-sm font-bold text-amber-300">
             방 코드 <span className="tracking-widest">{room.code}</span>
@@ -211,7 +211,7 @@ export function RoomLobbyScreen() {
         </div>
       </section>
 
-      <aside className="flex w-full shrink-0 flex-col gap-2 rounded-xl border border-slate-700 bg-slate-900 p-4 md:w-64">
+      <aside className="flex w-full shrink-0 flex-col gap-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-4 landscape:w-56 md:w-64">
         <p className="text-xs text-slate-400">인원 모드</p>
         <div className="flex gap-2">
           {ROOM_OPTIONS.playerModes.map((mode) => (
