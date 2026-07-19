@@ -25,6 +25,13 @@ describe('채팅창 (requirements 6번 + 최후의 변론 5-5항)', () => {
     expect(screen.getByText('바우')).toBeTruthy();
   });
 
+  it('발신자 배정 번호가 있으면 "n번.닉네임" 형태로 표시된다', () => {
+    renderChat({
+      messages: [{ id: 'm3', kind: 'CHAT', senderName: '바우', senderSeat: 5, text: '안녕' }],
+    });
+    expect(screen.getByText('5번.바우')).toBeTruthy();
+  });
+
   it('낮에는 "낮" 텍스트가 표시된다 (해 아이콘은 애니메이션 후 고정)', () => {
     renderChat();
     expect(screen.getByText('낮')).toBeTruthy();

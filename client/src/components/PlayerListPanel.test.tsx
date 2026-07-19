@@ -14,6 +14,18 @@ const players: PublicPlayerState[] = [
   { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: null },
 ];
 
+describe('플레이어 목록 — 닉네임 축약 표시', () => {
+  it('4글자 넘는 닉네임은 "..."으로 축약되고, 원래 이름은 화면에 없다', () => {
+    render(
+      <PlayerListPanel
+        players={[{ id: 'p1', name: '불닭볶음면장인', seat: 1, alive: true, avatarUrl: null }]}
+      />,
+    );
+    expect(screen.getByText('불닭볶음...')).toBeTruthy();
+    expect(screen.queryByText('불닭볶음면장인')).toBeNull();
+  });
+});
+
 describe('플레이어 목록 — 추측 직업 아이콘 (SuspicionMark)', () => {
   it('본인을 제외한 플레이어에게만 추측 아이콘 버튼이 표시된다', () => {
     render(<PlayerListPanel players={players} myId="p1" />);

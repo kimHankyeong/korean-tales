@@ -20,3 +20,8 @@ export function formatCountdown(label: string, secondsLeft: number): string {
   const safe = Math.max(0, Math.ceil(secondsLeft));
   return `${label} ${String(safe).padStart(2, '0')}초 남음`;
 }
+
+/** 플레이어 목록 등 좁은 공간용 닉네임 축약: 4글자 초과 시 "..."으로 표시 (예: "불닭볶음...") */
+export function truncateName(name: string, max = 4): string {
+  return name.length > max ? `${name.slice(0, max)}...` : name;
+}

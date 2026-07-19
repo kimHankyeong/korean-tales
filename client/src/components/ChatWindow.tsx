@@ -17,6 +17,8 @@ export interface ChatMessageView {
   id: string;
   kind: 'CHAT' | 'SYSTEM';
   senderName?: string;
+  /** 발신자 배정 번호 — 채팅에 "n번.닉네임" 형태로 함께 표시 */
+  senderSeat?: number;
   /** 발신자 계정 프로필 사진 — 없으면 기본 아바타 (requirements 11번 게임 내 연동) */
   senderAvatarUrl?: string | null;
   text: string;
@@ -125,7 +127,9 @@ export function ChatWindow({
             <p key={m.id} className="flex items-start gap-1.5 text-sm leading-snug">
               <Avatar name={m.senderName ?? '?'} url={m.senderAvatarUrl} size={20} />
               <span>
-                <span className="mr-1.5 font-semibold text-sky-300">{m.senderName}</span>
+                <span className="mr-1.5 font-semibold text-sky-300">
+                  {m.senderSeat != null ? `${m.senderSeat}번.${m.senderName}` : m.senderName}
+                </span>
                 <span className="text-slate-100">{m.text}</span>
               </span>
             </p>
