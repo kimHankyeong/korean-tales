@@ -97,7 +97,7 @@ export function GameScreen() {
   const chatLocked = isNight && !isEvil;
 
   return (
-    <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-hidden md:flex-row">
+    <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-y-hidden max-md:landscape:overflow-x-auto md:flex-row md:overflow-x-hidden">
       <ServerWakeNotice />
       <AnnouncementToast />
 
@@ -121,7 +121,7 @@ export function GameScreen() {
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
       {showSound && <SoundSettingsModal onClose={() => setShowSound(false)} />}
 
-      <div className="min-h-0 flex-1">
+      <div className="h-[50vh] shrink-0 max-md:landscape:min-w-72 max-md:landscape:shrink-0 landscape:h-auto landscape:min-h-0 landscape:flex-1 md:h-auto md:min-h-0 md:flex-1">
         <ChatWindow
           phase={store.phase}
           messages={store.messages}
