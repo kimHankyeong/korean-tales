@@ -59,11 +59,12 @@ export interface GameUiState {
    */
   suspicionMarks: Record<string, string>;
   /**
-   * 화면 중앙 4초 발표 문구 — 길동무 동반 사망(game:announcement), 유서 대상 지목
-   * (game:announcement), 투사 결과(gameInvestigation, 해태 본인에게만) 공용.
-   * id는 같은 문구가 연속으로 와도 매번 새로 4초 타이머가 돌게 하기 위한 값.
+   * 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목·구미호 유혹(game:announcement),
+   * 투사 결과(gameInvestigation, 해태 본인에게만) 공용. 표시 시간은 문구마다 다를 수 있다
+   * (예: 유혹 안내 3초, 나머지 4초). id는 같은 문구가 연속으로 와도 매번 새로 타이머가
+   * 돌게 하기 위한 값.
    */
-  announcement: { id: number; text: string } | null;
+  announcement: { id: number; text: string; durationMs: number } | null;
 
   setMyId(id: string): void;
   setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
@@ -82,7 +83,7 @@ export interface GameUiState {
   /** 추측 아이콘 설정 — emoji가 빈 문자열/null이면 지운다 */
   setSuspicionMark(playerId: string, emoji: string | null): void;
   /** 화면 중앙 발표 문구 표시(4초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
-  setAnnouncement(text: string): void;
+  setAnnouncement(text: string, durationMs?: number): void;
   clearAnnouncement(): void;
 
   setPhase(phase: PhaseKind): void;
@@ -168,7 +169,8 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       return { suspicionMarks: next };
     }),
 
-  setAnnouncement: (text) => set({ announcement: { id: nextAnnouncementId++, text } }),
+  setAnnouncement: (text, durationMs = 4000) =>
+    set({ announcement: { id: nextAnnouncementId++, text, durationMs } }),
   clearAnnouncement: () => set({ announcement: null }),
 
   applyGameState: (publicState) =>

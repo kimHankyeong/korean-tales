@@ -220,6 +220,9 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                 </div>
               ) : (
                 <>
+                  <p className="text-[11px] text-amber-200">
+                    {flowerMode === 'REVIVE' ? '부활꽃 — 되살릴 사람' : '멸망꽃으로 누구를 죽이시겠습니까?'}
+                  </p>
                   <TargetGrid
                     candidates={
                       flowerMode === 'REVIVE'

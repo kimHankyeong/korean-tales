@@ -37,12 +37,12 @@ type Actor = ReturnType<typeof createActor<typeof gameMachine>>;
 
 const timeUp = (actor: Actor) => actor.send({ type: 'TIME_UP' });
 
-/** 밤 전체를 이벤트 주입 없이 통과: 선스킬 → 악토론 → 악투표 → 악개별스킬 */
+/** 밤 전체를 이벤트 주입 없이 통과: 악토론 → 악투표 → 악개별스킬 → 선스킬 (13번 재배치 순서) */
 function passNight(actor: Actor) {
-  timeUp(actor); // goodSkills → evilDiscussion
   timeUp(actor); // evilDiscussion → evilVote
   timeUp(actor); // evilVote → evilSkills (무투표 → 킬 없음)
-  timeUp(actor); // evilSkills → dawn
+  timeUp(actor); // evilSkills → goodSkills
+  timeUp(actor); // goodSkills → dawn
 }
 
 /**
@@ -91,7 +91,8 @@ describe('게임 시작 (requirements 4번 — 항상 밤부터)', () => {
   it('setup 직후에는 밤(밤 0)부터 시작한다', () => {
     const actor = createActor(gameMachine, { input: { players: makePlayers(), rng: () => 0 } });
     actor.start();
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    // 13번 재배치: 밤은 이제 악 토론부터 시작(선 스킬은 악 투표 이후로 이동)
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
   });
 });
 
@@ -169,7 +170,7 @@ describe('7인 모드 (requirements 1번 — 조언자 뽑기 제외)', () => {
   it('조언자 선출 없이 바로 첫날 낮 개인 발언에서 시작한다 (정순 고정)', () => {
     const actor = createActor(gameMachine, { input: { players: makePlayers7(), rng: () => 0 } });
     actor.start();
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true); // 7인도 밤부터 시작
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true); // 7인도 밤부터 시작
     passNightAndFlower(actor);
     const snap = actor.getSnapshot();
     expect(snap.context.mode).toBe(7);
@@ -209,7 +210,7 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     timeUp(actor); // 토론 종료 → 투표
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
     timeUp(actor);
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     expect(aliveIds(actor)).toHaveLength(9);
   });
 
@@ -232,7 +233,7 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     expect(snap.context.executionTargetId).toBe('p5');
     timeUp(actor); // 변론 종료 → 처형 → 밤
     expect(player(actor, 'p5').alive).toBe(false);
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
   });
 
   it('최후의 변론은 처형 대상자 본인 Skip으로 즉시 사망 처리된다', () => {
@@ -246,7 +247,7 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     expect(actor.getSnapshot().matches({ day: 'finalPlea' })).toBe(true);
     actor.send({ type: 'SKIP', playerId: 'p1' }); // 본인 skip → 즉시 처형
     expect(player(actor, 'p1').alive).toBe(false);
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
   });
 
   it('구미호 유혹: 다음날 토론 후 투표를 통째로 스킵하고 바로 밤으로', () => {
@@ -255,31 +256,36 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // → night
-    timeUp(actor); // goodSkills → evilDiscussion
-    timeUp(actor); // → evilVote
-    timeUp(actor); // (킬 없음) → evilSkills
+    timeUp(actor); // → night (evilDiscussion)
+    timeUp(actor); // evilDiscussion → evilVote
+    timeUp(actor); // evilVote → evilSkills (킬 없음)
     actor.send({ type: 'GUMIHO_SEDUCE' });
-    timeUp(actor); // → dawn → 꽃 선택 (멸망꽃 사용 가능하므로 표시)
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    timeUp(actor); // evilSkills → goodSkills
+    timeUp(actor); // goodSkills → dawn → 꽃 선택 (멸망꽃 사용 가능하므로 표시)
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
     actor.send({ type: 'FLOWER_PASS' }); // → (사망 없음) → 낮 개인 발언
     expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
     passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 유혹 발동: 투표 스킵, 바로 밤
     const snap = actor.getSnapshot();
-    expect(snap.matches({ night: 'goodSkills' })).toBe(true);
+    expect(snap.matches({ night: 'evilDiscussion' })).toBe(true);
     expect(snap.context.seduceNextDay).toBe(false); // 1회성 소모
+    // 공개 발표 문구 — 3초간 표시 (13번)
+    expect(snap.context.deathAnnouncement).toEqual({
+      text: '구미호에 홀려 아무도 투표를 할 수 없게 되었다',
+      durationMs: 3000,
+    });
   });
 
   it('구미호가 밤 0(게임 시작 첫 밤)에 유혹을 쓰면 조언자 선출 이후 첫날 투표도 스킵된다 (9인)', () => {
     const actor = createActor(gameMachine, { input: { players: makePlayers(), rng: () => 0 } });
     actor.start();
-    timeUp(actor); // goodSkills → evilDiscussion
-    timeUp(actor); // → evilVote
-    timeUp(actor); // (킬 없음) → evilSkills
+    timeUp(actor); // evilDiscussion → evilVote
+    timeUp(actor); // evilVote → evilSkills (킬 없음)
     actor.send({ type: 'GUMIHO_SEDUCE' });
     expect(actor.getSnapshot().context.seduceNextDay).toBe(true);
-    timeUp(actor); // → dawn → flowerDecision
+    timeUp(actor); // evilSkills → goodSkills
+    timeUp(actor); // goodSkills → dawn → flowerDecision
     actor.send({ type: 'FLOWER_PASS' }); // → firstMorning(9인) 조언자 출마
     skipElection(actor); // 출마자 없음 → 곧장 낮 개인 발언
     expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
@@ -287,7 +293,7 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 유혹 발동: 투표 스킵, 바로 밤
     const snap = actor.getSnapshot();
-    expect(snap.matches({ night: 'goodSkills' })).toBe(true);
+    expect(snap.matches({ night: 'evilDiscussion' })).toBe(true);
     expect(snap.context.seduceNextDay).toBe(false);
   });
 });
@@ -304,6 +310,10 @@ describe('밤 페이즈 (requirements 4번)', () => {
   it('해태 투사: 깡철이는 "악 진영이 아닙니다"로 기록된다', () => {
     const actor = startGame();
     toNight(actor);
+    // 해태/도깨비 스킬(goodSkills)은 13번 재배치로 악 토론→투표→개별스킬 뒤로 이동
+    timeUp(actor); // evilDiscussion → evilVote
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
     actor.send({ type: 'HAETAE_INVESTIGATE', targetId: 'p2' }); // 깡철이
     expect(actor.getSnapshot().context.lastInvestigation).toEqual({
       targetId: 'p2',
@@ -313,8 +323,7 @@ describe('밤 페이즈 (requirements 4번)', () => {
 
   it('악 토론은 악 진영 생존자 전원 Skip 시 조기 종료된다', () => {
     const actor = startGame();
-    toNight(actor);
-    timeUp(actor); // goodSkills → evilDiscussion
+    toNight(actor); // 13번 재배치: 밤은 이제 악 토론(evilDiscussion)부터 바로 시작
     actor.send({ type: 'SKIP', playerId: 'p5' }); // 선 진영 — 무시
     actor.send({ type: 'SKIP', playerId: 'p1' });
     actor.send({ type: 'SKIP', playerId: 'p2' });
@@ -326,13 +335,13 @@ describe('밤 페이즈 (requirements 4번)', () => {
   it('악 투표로 킬 → 새벽에 사망 반영 → 부활꽃으로 부활 가능', () => {
     const actor = startGame();
     toNight(actor);
-    timeUp(actor); // goodSkills → evilDiscussion
-    timeUp(actor); // → evilVote
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
-    timeUp(actor); // → evilSkills
-    timeUp(actor); // → dawn: p5 사망 반영
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    timeUp(actor); // goodSkills → dawn: p5 사망 반영
     expect(player(actor, 'p5').alive).toBe(false);
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
     actor.send({ type: 'FLOWER_REVIVE', targetId: 'p5' });
     const snap = actor.getSnapshot();
     expect(player(actor, 'p5').alive).toBe(true);
@@ -344,12 +353,12 @@ describe('밤 페이즈 (requirements 4번)', () => {
   it('도깨비 보호 성공: 보호 대상이 그날 밤 킬 대상과 같으면 무산되어 아무도 죽지 않는다 (차단 사실 비공개, 스킬 영구 소모)', () => {
     const actor = startGame();
     toNight(actor);
-    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
-    timeUp(actor); // → evilDiscussion
-    timeUp(actor); // → evilVote
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
-    timeUp(actor); // → evilSkills
-    timeUp(actor); // → dawn: 보호 성공으로 킬 무효
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
+    timeUp(actor); // goodSkills → dawn: 보호 성공으로 킬 무효
     expect(player(actor, 'p5').alive).toBe(true);
     expect(actor.getSnapshot().context.pendingDeaths).toHaveLength(0);
     expect(player(actor, 'p6').skillUses.prank).toBe(1); // 보호 성공으로 1회 소모(이후 재사용 불가)
@@ -358,13 +367,13 @@ describe('밤 페이즈 (requirements 4번)', () => {
   it('도깨비 보호 성공 + 자청비가 같은 대상에게 부활꽃 사용: 실제로 되살릴 필요는 없지만 둘 다 소모 처리된다', () => {
     const actor = startGame();
     toNight(actor);
-    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
-    timeUp(actor); // → evilDiscussion
-    timeUp(actor); // → evilVote
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
-    timeUp(actor); // → evilSkills
-    timeUp(actor); // → dawn: 보호 성공으로 킬 무효, 도깨비 장난 영구 소모
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
+    timeUp(actor); // goodSkills → dawn: 보호 성공으로 킬 무효, 도깨비 장난 영구 소모
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
     expect(player(actor, 'p6').skillUses.prank).toBe(1);
 
     actor.send({ type: 'FLOWER_REVIVE', targetId: 'p5' }); // 이미 살아있는 대상 — 되살릴 필요 없음
@@ -376,12 +385,12 @@ describe('밤 페이즈 (requirements 4번)', () => {
   it('도깨비 보호 실패: 보호 대상이 킬 대상과 다르면 킬은 그대로 반영되고 스킬은 소모되지 않아 다음 밤에도 재사용 가능', () => {
     const actor = startGame();
     toNight(actor);
-    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' }); // p1을 보호했지만
-    timeUp(actor); // → evilDiscussion
-    timeUp(actor); // → evilVote
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' }); // 실제 킬 대상은 p5
-    timeUp(actor); // → evilSkills
-    timeUp(actor); // → dawn: 보호 실패, 킬 반영
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' }); // p1을 보호했지만
+    timeUp(actor); // goodSkills → dawn: 보호 실패, 킬 반영
     expect(player(actor, 'p5').alive).toBe(false);
     expect(player(actor, 'p6').skillUses.prank ?? 0).toBe(0); // 소모되지 않음 — 다음 밤에도 사용 가능
   });
@@ -408,9 +417,12 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     actor.send({ type: 'GRUDGE_TARGET', targetId: 'p1' });
     expect(player(actor, 'p7').alive).toBe(false);
     expect(player(actor, 'p1').alive).toBe(false); // 동반 사망
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     // 공개 발표 문구 — 대상의 배정 번호로 안내 (13번)
-    expect(actor.getSnapshot().context.deathAnnouncement).toBe('유서에 쓰인 건 1번입니다');
+    expect(actor.getSnapshot().context.deathAnnouncement).toEqual({
+      text: '유서에 쓰인 건 1번입니다',
+      durationMs: 4000,
+    });
   });
 
   it('피 맺힌 유서는 10초 미선택(TIME_UP) 시 자동 포기된다', () => {
@@ -420,7 +432,7 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     timeUp(actor); // 자동 포기
     expect(player(actor, 'p7').alive).toBe(false);
     expect(aliveIds(actor)).toHaveLength(8); // 추가 사망 없음
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
   });
 
   it('조언자 처형 → 방울 승계 지목 → 지목자가 조언자 역할 인계', () => {
@@ -438,7 +450,7 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     actor.send({ type: 'ADVISOR_SUCCEED', targetId: 'p6' });
     const snap = actor.getSnapshot();
     expect(snap.context.advisorId).toBe('p6');
-    expect(snap.matches({ night: 'goodSkills' })).toBe(true);
+    expect(snap.matches({ night: 'evilDiscussion' })).toBe(true);
   });
 
   it('까치선비 사망 → 연민 부활 예약 → 다음 새벽 부활하며 중립 전환', () => {
@@ -446,7 +458,7 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     skipElection(actor);
     executeTarget(actor, 'p8'); // 까치선비 — 자동 트리거라 입력 대기 없이 밤으로
     expect(player(actor, 'p8').alive).toBe(false);
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     passNight(actor); // → dawn: 예약 부활 실행
     const revived = player(actor, 'p8');
     expect(revived.alive).toBe(true);
@@ -469,14 +481,15 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     skipElection(actor);
     toNight(actor);
 
-    // 밤 1: 도깨비가 해태(p5)를 보호 + 악 킬(p5) + 저승사자 길동무 지정(p6 도깨비)
-    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
-    timeUp(actor); // → evilDiscussion
-    timeUp(actor); // → evilVote
+    // 밤 1(13번 재배치: 악 토론→악 투표→악 개별 스킬→선 스킬 순): 악 킬(p5) 투표 + 저승사자
+    // 길동무 지정(p6) → 그 다음 도깨비가 해태(p5)를 보호
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p5' });
-    timeUp(actor); // → evilSkills
+    timeUp(actor); // evilVote → evilSkills
     actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' });
-    timeUp(actor); // → dawn
+    timeUp(actor); // evilSkills → goodSkills
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p5' });
+    timeUp(actor); // goodSkills → dawn
 
     // 새벽: 보호 성공으로 킬 무효 — "사망자 없음" (차단 사실 비공개)
     expect(player(actor, 'p5').alive).toBe(true);
@@ -492,21 +505,24 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     expect(player(actor, 'p1').alive).toBe(false);
     expect(player(actor, 'p6').alive).toBe(false); // 동반 사망 — 장난은 밤 킬만 막는다
     expect(player(actor, 'p5').alive).toBe(true);
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     // 공개 발표 문구 — 대상의 배정 번호로 안내 (13번)
-    expect(actor.getSnapshot().context.deathAnnouncement).toBe('저승사자가 길동무로 6번을 선택했습니다');
+    expect(actor.getSnapshot().context.deathAnnouncement).toEqual({
+      text: '저승사자가 길동무로 6번을 선택했습니다',
+      durationMs: 4000,
+    });
   });
 
   it('저승사자가 길동무를 지정한 밤 자청비의 멸망꽃으로 죽으면 길동무는 동반 사망하지 않는다', () => {
     const actor = startGame();
     skipElection(actor);
     toNight(actor);
-    timeUp(actor); // goodSkills → evilDiscussion
     timeUp(actor); // evilDiscussion → evilVote (무투표)
     timeUp(actor); // evilVote → evilSkills
     actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' });
-    timeUp(actor); // → dawn → flowerDecision (킬 없음, 멸망꽃은 항상 가능)
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    timeUp(actor); // evilSkills → goodSkills
+    timeUp(actor); // goodSkills → dawn → flowerDecision (킬 없음, 멸망꽃은 항상 가능)
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
 
     actor.send({ type: 'FLOWER_DOOM', targetId: 'p1' }); // 저승사자(p1) 자신을 멸망꽃으로 처형
     const snap = actor.getSnapshot();
@@ -521,7 +537,7 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     skipElection(actor);
     toNight(actor);
     passNight(actor); // 킬 없는 밤 → 2일차 아침 꽃 선택
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
     actor.send({ type: 'FLOWER_DOOM', targetId: 'p7' }); // 장화홍련 즉시 처형
     // 유서 입력 대기 없이 곧장 낮 진행 (봉인)
     const snap = actor.getSnapshot();
@@ -551,25 +567,26 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     toNight(actor);
 
     // 밤 1: 도깨비가 p1을 보호 → 악이 p1을 킬 시도 → 보호 성공, 장난 영구 소모
-    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' });
-    timeUp(actor); // → evilDiscussion
-    timeUp(actor); // → evilVote
+    // (13번 재배치: 도깨비 스킬은 이제 악 투표 이후 goodSkills 단계에서 지정)
+    timeUp(actor); // evilDiscussion → evilVote
     actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p2', targetId: 'p1' });
-    timeUp(actor); // → evilSkills
-    timeUp(actor); // → 2일차 아침: 보호 성공
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' });
+    timeUp(actor); // goodSkills → 2일차 아침: 보호 성공
     expect(player(actor, 'p1').alive).toBe(true);
     expect(player(actor, 'p6').skillUses.prank).toBe(1);
     actor.send({ type: 'FLOWER_PASS' });
     toNight(actor);
 
     // 밤 2: 장난은 이미 소모되어 재사용 불가 — guard가 차단, 도깨비(p6)는 무방비로 킬당함
+    timeUp(actor); // evilDiscussion → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p2', targetId: 'p6' });
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
     actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p6' }); // guard가 차단해야 함
     expect(actor.getSnapshot().context.dokkaebiProtectTargetId).toBeNull();
-    timeUp(actor);
-    timeUp(actor);
-    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p2', targetId: 'p6' });
-    timeUp(actor);
-    timeUp(actor); // → 3일차 새벽: p6 사망 (보호 없음)
+    timeUp(actor); // goodSkills → 3일차 새벽: p6 사망 (보호 없음)
     expect(player(actor, 'p6').alive).toBe(false);
 
     // 부활꽃으로 부활 — 사용한 장난은 복구되지 않는다
@@ -580,6 +597,9 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
 
     // 그 밤에도 장난 재사용 불가
     toNight(actor);
+    timeUp(actor); // evilDiscussion → evilVote
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
     actor.send({ type: 'DOKKAEBI_PRANK', targetId: 'p1' });
     expect(actor.getSnapshot().context.dokkaebiProtectTargetId).toBeNull();
   });
@@ -640,11 +660,11 @@ describe('승리 판정 (requirements 8번)', () => {
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
     timeUp(actor);
     timeUp(actor); // 처형 → 밤
-    expect(actor.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     passNight(actor);
 
     // 2일차 아침: 멸망꽃으로 p2(깡철이) 즉시 처형
-    expect(actor.getSnapshot().matches({ day: 'flowerDecision' })).toBe(true);
+    expect(actor.getSnapshot().matches({ night: 'flowerDecision' })).toBe(true);
     actor.send({ type: 'FLOWER_DOOM', targetId: 'p2' });
     expect(player(actor, 'p2').alive).toBe(false);
     expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);

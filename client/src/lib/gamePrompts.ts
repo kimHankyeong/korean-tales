@@ -95,7 +95,8 @@ export function resolveActivePrompt(
             buildAction: (targetId) => ({ type: 'VOTE', voterId: myId, targetId }),
           };
 
-    case 'day.flowerDecision':
+    // 13번 재배치: 자청비 꽃 선택은 밤(악 투표 이후)으로 이동 — 그 밤의 실제 사망 결과를 보고 고른다
+    case 'night.flowerDecision':
       return myRole?.characterId === 'jacheongbi' ? { kind: 'FLOWER' } : null;
 
     case 'day.personalSpeech':

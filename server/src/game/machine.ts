@@ -18,6 +18,14 @@
  *   게임은 항상 밤부터 시작한다(4번 섹션). 9인 모드는 그 첫 밤이 끝난 뒤에만 조언자 선출로
  *   진입하고(firstMorningPending), 이후의 모든 밤은 평소처럼 낮 개인 발언으로 돌아간다.
  *   사망 발생 시 공통적으로 resolveDeaths 서브 상태를 경유한다.
+ *
+ * 밤(night) 내부 순서 — 13번 피드백으로 재배치됨:
+ *   evilDiscussion(악 토론) → evilVote(악 처치 투표) → evilSkills(구미호·저승사자)
+ *   → goodSkills(도깨비·해태, 악 투표 이후로 이동) → dawn(사망 판정 — 옛 day.dawn이 이리로 이동)
+ *   → flowerDecision(자청비, 옛 day.flowerDecision이 이리로 이동 — 이제 그 밤의 실제 사망 결과를
+ *     보고 고른다) → resolveDeaths → firstMorning 또는 day.personalSpeech.
+ *   자청비의 부활꽃 대상은 이 밤에 도깨비 장난까지 반영해 확정된 pendingDeaths를 그대로 쓰므로
+ *   추측(blind guess) 없이 기존과 동일한 "그날 밤 악 킬 사망자만" 로직을 재사용한다.
  */
 
 import { and, assign, setup } from 'xstate';
@@ -346,7 +354,11 @@ export const gameMachine = setup({
       };
     }),
     // 유혹 소모 — 투표 단계 스킵과 함께 1회성 효과 종료
-    consumeSeduce: assign({ seduceNextDay: false }),
+    // 유혹으로 낮 투표가 통째로 스킵될 때 공개 발표(3초) — 13번
+    consumeSeduce: assign({
+      seduceNextDay: false,
+      deathAnnouncement: { text: '구미호에 홀려 아무도 투표를 할 수 없게 되었다', durationMs: 3000 },
+    }),
     // 1차 처형 투표 확정 적용 (기권 규칙·동표는 guard가 분기)
     applyExecutionRound1: assign(({ context }) => {
       const result = resolveExecutionVote(context.votes, 1);
@@ -469,7 +481,9 @@ export const gameMachine = setup({
           { playerId: event.targetId, cause: 'TAKE_ALONG', applied: false } satisfies PendingDeath,
         ],
         awaiting: null,
-        deathAnnouncement: target ? `유서에 쓰인 건 ${target.seat}번입니다` : context.deathAnnouncement,
+        deathAnnouncement: target
+          ? { text: `유서에 쓰인 건 ${target.seat}번입니다`, durationMs: 4000 }
+          : context.deathAnnouncement,
       };
     }),
     // 피 맺힌 유서 포기 (버튼 또는 10초 만료)
@@ -633,41 +647,10 @@ export const gameMachine = setup({
     },
 
     /* ═══ 낮 페이즈 (requirements 5번·7번 발언 순서) ═══ */
+    // dawn(새벽 사망 판정)·flowerDecision(자청비)은 13번 피드백으로 night 안으로 이동했다.
     day: {
-      initial: 'dawn',
+      initial: 'personalSpeech',
       states: {
-        // 새벽 통과 상태: 일차 증가 → 연민 부활 → 밤 킬 판정(장난이면 "사망자 없음")
-        dawn: {
-          id: 'dawn',
-          entry: 'applyDawn',
-          always: [
-            // 전이 조건: 자청비 생존 + 사용 가능한 꽃 있음 → 꽃 선택 (10초)
-            { guard: 'flowerPhaseAvailable', target: 'flowerDecision' },
-            // 전이 조건: 꽃 단계 불가 → 밤 사망자 트리거 처리 후 낮 진행
-            { actions: 'setResumeDay', target: '#resolveDeaths' },
-          ],
-        },
-        // 자청비 부활꽃/멸망꽃 선택 (10초) — 같은 아침 두 꽃 동시 사용 불가(전이가 1회로 보장)
-        flowerDecision: {
-          on: {
-            // 조언자: 이 아침의 발언 방향(역순/정순) 결정 — 개인 발언 시작 전까지 유효
-            ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
-            // 부활꽃: 그날 밤 악 진영 킬 사망자만 부활 → 남은 사망 트리거 처리
-            FLOWER_REVIVE: {
-              guard: 'validRevive',
-              actions: ['applyRevive', 'setResumeDay'],
-              target: '#resolveDeaths',
-            },
-            // 멸망꽃: 생존자 1인 즉시 처형 (동귀어진류 봉인은 sealedByDeathCauses로 처리)
-            FLOWER_DOOM: {
-              guard: 'validDoom',
-              actions: ['applyDoom', 'setResumeDay'],
-              target: '#resolveDeaths',
-            },
-            FLOWER_PASS: { actions: 'setResumeDay', target: '#resolveDeaths' },
-            TIME_UP: { actions: 'setResumeDay', target: '#resolveDeaths' },
-          },
-        },
         // 낮 개인 발언 — 방 옵션(80/120초)씩 순서대로, 조언자는 마지막 (7번 섹션)
         // Skip은 현재 발언자 본인만 유효 → 즉시 다음 순서
         personalSpeech: {
@@ -761,20 +744,14 @@ export const gameMachine = setup({
     },
 
     /* ═══ 밤 페이즈 (requirements 4번) ═══ */
+    // 순서(13번 피드백 재배치): 악 토론 → 악 투표 → 악 개별 스킬 → 선 스킬(도깨비·해태)
+    // → 새벽 사망 판정 → 자청비 꽃 선택 → (다음 낮/밤으로)
     night: {
       id: 'night',
-      initial: 'goodSkills',
+      initial: 'evilDiscussion',
+      entry: 'clearNightState',
       states: {
-        // 1) 해태/도깨비 스킬 (10초, 동시 진행)
-        goodSkills: {
-          entry: 'clearNightState',
-          on: {
-            HAETAE_INVESTIGATE: { guard: 'validInvestigate', actions: 'recordInvestigation' },
-            DOKKAEBI_PRANK: { guard: 'validPrank', actions: 'setDokkaebiProtection' },
-            TIME_UP: { target: 'evilDiscussion' },
-          },
-        },
-        // 2) 악 진영 토론 (90초) — 악 생존자 전원 Skip 시 조기 종료
+        // 1) 악 진영 토론 (90초) — 악 생존자 전원 Skip 시 조기 종료
         evilDiscussion: {
           entry: 'clearSkips',
           on: {
@@ -785,20 +762,60 @@ export const gameMachine = setup({
             ],
           },
         },
-        // 3) 악 진영 처치 대상 투표 (10초) — 동률 시 무작위(문서 미정 가정), 무투표면 킬 없음
+        // 2) 악 진영 처치 대상 투표 (10초) — 동률 시 무작위(문서 미정 가정), 무투표면 킬 없음
         evilVote: {
           on: {
             EVIL_KILL_VOTE: { guard: 'validEvilVote', actions: 'registerEvilVote' },
             TIME_UP: { actions: 'decideNightKill', target: 'evilSkills' },
           },
         },
-        // 5) 악 진영 개별 스킬 (10초) — 저승사자 길동무 / 구미호 유혹, 깡철이는 패시브
-        //    (4항 도깨비 장난의 킬 무효 판정은 새벽(dawn)에서 처리)
+        // 3) 악 진영 개별 스킬 (10초) — 저승사자 길동무 / 구미호 유혹, 깡철이는 패시브
         evilSkills: {
           on: {
             JEOSEUNG_COMPANION: { guard: 'validCompanion', actions: 'setCompanion' },
             GUMIHO_SEDUCE: { guard: 'validSeduce', actions: 'useSeduce' },
-            TIME_UP: { target: '#dawn' },
+            TIME_UP: { target: 'goodSkills' },
+          },
+        },
+        // 4) 해태/도깨비 스킬 (10초, 동시 진행) — 악 투표 이후로 이동(13번)
+        goodSkills: {
+          on: {
+            HAETAE_INVESTIGATE: { guard: 'validInvestigate', actions: 'recordInvestigation' },
+            DOKKAEBI_PRANK: { guard: 'validPrank', actions: 'setDokkaebiProtection' },
+            TIME_UP: { target: 'dawn' },
+          },
+        },
+        // 5) 새벽 통과 상태: 일차 증가 → 연민 부활 → 밤 킬 판정(장난이면 "사망자 없음")
+        dawn: {
+          id: 'dawn',
+          entry: 'applyDawn',
+          always: [
+            // 전이 조건: 자청비 생존 + 사용 가능한 꽃 있음 → 꽃 선택 (10초)
+            { guard: 'flowerPhaseAvailable', target: 'flowerDecision' },
+            // 전이 조건: 꽃 단계 불가 → 밤 사망자 트리거 처리 후 낮 진행
+            { actions: 'setResumeDay', target: '#resolveDeaths' },
+          ],
+        },
+        // 6) 자청비 부활꽃/멸망꽃 선택 (10초) — 이제 그 밤의 실제 사망 결과(도깨비 장난 반영)를
+        //    보고 고른다. 같은 밤 두 꽃 동시 사용 불가(전이가 1회로 보장)
+        flowerDecision: {
+          on: {
+            // 조언자: 다음 낮의 발언 방향(역순/정순) 결정 — 개인 발언 시작 전까지 유효
+            ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
+            // 부활꽃: 그날 밤 악 진영 킬 사망자만 부활 → 남은 사망 트리거 처리
+            FLOWER_REVIVE: {
+              guard: 'validRevive',
+              actions: ['applyRevive', 'setResumeDay'],
+              target: '#resolveDeaths',
+            },
+            // 멸망꽃: 생존자 1인 즉시 처형 (동귀어진류 봉인은 sealedByDeathCauses로 처리)
+            FLOWER_DOOM: {
+              guard: 'validDoom',
+              actions: ['applyDoom', 'setResumeDay'],
+              target: '#resolveDeaths',
+            },
+            FLOWER_PASS: { actions: 'setResumeDay', target: '#resolveDeaths' },
+            TIME_UP: { actions: 'setResumeDay', target: '#resolveDeaths' },
           },
         },
       },

@@ -325,7 +325,7 @@ export interface DeathProcessState {
   companionTargetId: string | null;
   awaiting: AwaitingTrigger | null;
   /** 방금 확정된 공개 발표 문구 (예: "저승사자가 길동무로 3번을 선택했습니다") — 없으면 null */
-  deathAnnouncement: string | null;
+  deathAnnouncement: { text: string; durationMs: number } | null;
 }
 
 /**
@@ -424,7 +424,7 @@ export function processDeathQueue(input: DeathProcessState): DeathProcessState {
         const target = targetId ? getPlayer(state.players, targetId) : undefined;
         if (target?.alive) {
           state.pendingDeaths.push({ playerId: target.id, cause: 'COMPANION_DEATH', applied: false });
-          state.deathAnnouncement = `저승사자가 길동무로 ${target.seat}번을 선택했습니다`;
+          state.deathAnnouncement = { text: `저승사자가 길동무로 ${target.seat}번을 선택했습니다`, durationMs: 4000 };
         }
         death.triggers.shift();
       } else if (trigger === 'KKACHI_REVIVAL') {

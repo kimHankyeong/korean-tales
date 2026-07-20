@@ -101,7 +101,7 @@ describe('Socket.io 실시간 레이어 (7인 모드 풀 사이클)', () => {
     // 공개 상태: 게임은 항상 밤부터 시작 (7인 모드는 밤 0이 끝나면 조언자 선출 없이 바로
     // 낮 개인 발언으로 이어지지만, 실시간 타이머라 그 전환까지 기다리진 않고 최초 상태만 검증)
     const state = await statePromise;
-    expect(state.phase).toBe('night.goodSkills');
+    expect(state.phase).toBe('night.evilDiscussion'); // 13번 재배치 — 악 토론이 밤의 첫 단계
     expect(state.players).toHaveLength(7);
     expect(JSON.stringify(state)).not.toContain('characterId');
 

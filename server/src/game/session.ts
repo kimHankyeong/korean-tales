@@ -37,8 +37,6 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: 'electionRevote', seconds: TIMER_CONFIG.advisorVote };
 
   /* 낮 (2번 표 + 방 옵션) */
-  if (snapshot.matches({ day: 'flowerDecision' }))
-    return { key: `flower:${context.day}`, seconds: TIMER_CONFIG.morningFlowerDecision };
   if (snapshot.matches({ day: 'personalSpeech' }))
     return {
       key: `speech:${context.day}:${context.speechQueue[0]}`,
@@ -64,6 +62,9 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: `evilVote:${context.day}`, seconds: TIMER_CONFIG.vote };
   if (snapshot.matches({ night: 'evilSkills' }))
     return { key: `evilSkills:${context.day}`, seconds: TIMER_CONFIG.nightEvilIndividualSkill };
+  // 13번 피드백: 자청비 꽃 선택이 아침(day)에서 밤(night, 악 투표 이후)으로 이동
+  if (snapshot.matches({ night: 'flowerDecision' }))
+    return { key: `flower:${context.day}`, seconds: TIMER_CONFIG.morningFlowerDecision };
 
   /* 사망 확정 트리거 (2번 표: 각 10초) */
   if (snapshot.matches({ resolveDeaths: 'awaitGrudge' }))

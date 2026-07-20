@@ -365,7 +365,10 @@ describe('사망 확정 트리거 (requirements 5-6항)', () => {
     expect(result.players.find((p) => p.id === haetae.id)?.alive).toBe(false);
     expect(result.companionTargetId).toBeNull(); // 지정 소모
     // 공개 발표 문구 — 대상의 배정 번호(seat)로 안내 (13번)
-    expect(result.deathAnnouncement).toBe(`저승사자가 길동무로 ${haetae.seat}번을 선택했습니다`);
+    expect(result.deathAnnouncement).toEqual({
+      text: `저승사자가 길동무로 ${haetae.seat}번을 선택했습니다`,
+      durationMs: 4000,
+    });
   });
 
   it('길동무로 지정한 대상이 이미 죽어 있으면 동반 사망도, 발표 문구도 발생하지 않는다', () => {

@@ -88,8 +88,9 @@ export function GameScreen() {
   const prompt = store.publicState
     ? resolveActivePrompt(store.publicState, store.role, store.myId, store.timer?.label ?? null)
     : null;
+  // 13번 재배치: 자청비 꽃 선택(조언자 발언 방향 결정 겸용)이 밤으로 이동
   const advisorDirectionActive =
-    store.publicState?.phase === 'day.flowerDecision' && store.publicState.advisorId === store.myId;
+    store.publicState?.phase === 'night.flowerDecision' && store.publicState.advisorId === store.myId;
 
   // 밤에는 전체 공개 채팅이 없다 — 악 진영은 전용 채널로, 그 외는 채팅창 자체를 잠근다 (3번·4번 섹션)
   const isNight = store.phase === 'NIGHT';
@@ -138,7 +139,7 @@ export function GameScreen() {
         />
       </div>
 
-      <PlayerListPanel players={store.players} myId={store.myId} />
+      <PlayerListPanel players={store.players} myId={store.myId} advisorId={store.publicState?.advisorId} />
 
       <AdminPuppetPanel
         roster={store.adminRoster}
@@ -284,7 +285,11 @@ export function GameScreen() {
               </div>
             ) : (
               <SelectionPanel
-                title={flowerMode === 'REVIVE' ? '부활꽃 — 되살릴 사람 (그날 밤 사망자만)' : '멸망꽃 — 처형할 사람'}
+                title={
+                  flowerMode === 'REVIVE'
+                    ? '부활꽃 — 되살릴 사람 (그날 밤 사망자만)'
+                    : '멸망꽃으로 누구를 죽이시겠습니까?'
+                }
                 buttonLabel="선택하기"
                 players={
                   flowerMode === 'REVIVE'

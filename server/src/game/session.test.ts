@@ -41,13 +41,13 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('시작 시 밤(밤 0) 스킬 타이머를 먼저 시작한다', () => {
+  it('시작 시 밤(밤 0) 악 토론 타이머를 먼저 시작한다 (13번 재배치)', () => {
     const { session, syncs } = makeSession();
     session.start();
     expect(syncs).toHaveLength(1);
     expect(syncs[0]).toMatchObject({
-      phaseKey: 'goodSkills:0',
-      durationSeconds: TIMER_CONFIG.nightGoodSkillDecision,
+      phaseKey: 'evilDiscussion:0',
+      durationSeconds: TIMER_CONFIG.nightEvilDiscussion,
     });
     session.stop();
   });
@@ -123,19 +123,19 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
     vi.advanceTimersByTime(9 * 80 * 1000); // 개인 발언 9명
     vi.advanceTimersByTime(180 * 1000); // 전체 토론
     vi.advanceTimersByTime(TIMER_CONFIG.vote * 1000); // 투표(전원 미투표=기권) → 밤
-    expect(session.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
-    // 밤도 자동 진행: 선스킬 10 → 악토론 90 → 악투표 10 → 악개별 10 → 새벽
+    expect(session.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
+    // 밤도 자동 진행: 악토론 90 → 악투표 10 → 악개별 10 → 선스킬 10 → 새벽 (13번 재배치)
     vi.advanceTimersByTime(
-      (TIMER_CONFIG.nightGoodSkillDecision +
-        TIMER_CONFIG.nightEvilDiscussion +
+      (TIMER_CONFIG.nightEvilDiscussion +
         TIMER_CONFIG.vote +
-        TIMER_CONFIG.nightEvilIndividualSkill) *
+        TIMER_CONFIG.nightEvilIndividualSkill +
+        TIMER_CONFIG.nightGoodSkillDecision) *
         1000,
     );
     const snap = session.getSnapshot();
     expect(snap.context.day).toBe(2);
     // 2일차 아침: 자청비 생존 → 꽃 선택 10초
-    expect(snap.matches({ day: 'flowerDecision' })).toBe(true);
+    expect(snap.matches({ night: 'flowerDecision' })).toBe(true);
     session.stop();
   });
 
@@ -158,7 +158,7 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
       durationSeconds: TIMER_CONFIG.deathJanghwaDecision,
     });
     vi.advanceTimersByTime(TIMER_CONFIG.deathJanghwaDecision * 1000); // 미선택 → 자동 포기
-    expect(session.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(session.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     session.stop();
   });
 });

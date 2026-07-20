@@ -115,11 +115,12 @@ export interface GameContext {
   /** 다음 새벽에 부활할 플레이어 (연민 예약) */
   scheduledRevivals: string[];
   /**
-   * 방금 확정된 공개 발표 문구(길동무 동반 사망·유서 대상 지목 등) — Room이 감지해
-   * 방 전체에 game:announcement로 중계한다. 1회성이라 소비 후에도 값은 남아있을 수
-   * 있으므로(문자열 동일성으로 새 값만 재전송), 매번 처리 시 값이 없으면 null로 덮인다.
+   * 방금 확정된 공개 발표 문구(길동무 동반 사망·유서 대상 지목·구미호 유혹으로 인한
+   * 투표 스킵 등) — Room이 감지해 방 전체에 game:announcement로 중계한다. 표시 시간은
+   * 문구마다 다를 수 있어(예: 유혹 안내는 3초, 나머지는 4초) durationMs로 함께 싣는다.
+   * 객체 참조 동일성으로 "새 발표인지" 판별하므로, 값이 실제로 바뀔 때만 새 객체를 만든다.
    */
-  deathAnnouncement: string | null;
+  deathAnnouncement: { text: string; durationMs: number } | null;
 
   winner: Faction | null;
   /** 무작위 판정용 난수원 — 테스트에서 결정적 함수 주입 */
