@@ -14,6 +14,25 @@ const players: PublicPlayerState[] = [
   { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: null },
 ];
 
+describe('플레이어 목록 — 조언자 지팡이 표시', () => {
+  it('생존한 조언자에게만 지팡이 아이콘이 표시된다', () => {
+    render(<PlayerListPanel players={players} advisorId="p1" />);
+    expect(screen.getByLabelText('조언자')).toBeTruthy();
+    expect(screen.getAllByLabelText('조언자')).toHaveLength(1);
+  });
+
+  it('조언자가 사망하면 지팡이 아이콘이 사라진다', () => {
+    const dead = players.map((p) => (p.id === 'p1' ? { ...p, alive: false } : p));
+    render(<PlayerListPanel players={dead} advisorId="p1" />);
+    expect(screen.queryByLabelText('조언자')).toBeNull();
+  });
+
+  it('조언자가 없으면(advisorId 미지정) 아무도 지팡이를 표시하지 않는다', () => {
+    render(<PlayerListPanel players={players} />);
+    expect(screen.queryByLabelText('조언자')).toBeNull();
+  });
+});
+
 describe('플레이어 목록 — 닉네임 축약 표시', () => {
   it('4글자 넘는 닉네임은 "..."으로 축약되고, 원래 이름은 화면에 없다', () => {
     render(

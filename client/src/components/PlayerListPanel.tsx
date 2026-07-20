@@ -6,6 +6,7 @@
  * 세로 모드 모바일에서는 채팅창이 너무 좁아지는 걸 막기 위해 2열 그리드로 압축 표시하고
  * (7~9명이 2×4~2×5면 한 화면에 다 들어온다), 가로 모드·데스크톱에서는 기존처럼 세로 목록으로
  * 보여준다. 닉네임은 좁은 칸에서 줄바꿈되지 않도록 4글자로 축약한다(truncateName).
+ * 조언자로 선출된 생존자는 프로필 왼쪽에 주황색 지팡이(🪄) 표시 — 죽으면 사라진다.
  */
 
 import type { PublicPlayerState } from '@korean-tales/shared';
@@ -13,7 +14,15 @@ import { truncateName } from '../lib/format';
 import { Avatar } from './Avatar';
 import { SuspicionMark } from './SuspicionMark';
 
-export function PlayerListPanel({ players, myId }: { players: PublicPlayerState[]; myId?: string }) {
+export function PlayerListPanel({
+  players,
+  myId,
+  advisorId,
+}: {
+  players: PublicPlayerState[];
+  myId?: string;
+  advisorId?: string | null;
+}) {
   return (
     <aside
       aria-label="플레이어 목록"
@@ -24,6 +33,11 @@ export function PlayerListPanel({ players, myId }: { players: PublicPlayerState[
           key={p.id}
           className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 ${p.alive ? '' : 'opacity-45'}`}
         >
+          {p.alive && p.id === advisorId && (
+            <span aria-label="조언자" title="조언자" className="shrink-0 text-amber-400">
+              🪄
+            </span>
+          )}
           <div className="relative shrink-0">
             <Avatar name={p.name} url={p.avatarUrl} size={30} />
             {p.id !== myId && <SuspicionMark playerId={p.id} />}
