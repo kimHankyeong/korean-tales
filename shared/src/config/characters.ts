@@ -19,7 +19,7 @@ export const FACTION_META: Record<Faction, FactionMeta> = {
   EVIL: {
     id: 'EVIL',
     label: '악 진영',
-    winCondition: '선 진영 전원 탈락, 또는 선 진영 전원이 항복(투항) 투표',
+    winCondition: '선 진영 전원 탈락 혹은 항복(투항), 또는 중립 진영 전원 탈락',
   },
   GOOD: {
     id: 'GOOD',

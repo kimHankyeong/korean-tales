@@ -37,8 +37,8 @@ describe('직업 설명(스킬북) 모달 (requirements 6번)', () => {
 
   it('진영별 승리 조건이 표시된다', () => {
     render(<SkillBookModal onClose={() => {}} />);
-    // 기본 선택: 악 진영 — 상대인 선 진영 전멸/항복이 악 진영의 승리 조건
-    expect(screen.getByText(/선 진영 전원 탈락, 또는 선 진영 전원이 항복/)).toBeTruthy();
+    // 기본 선택: 악 진영 — 상대(선) 전멸/항복 또는 중립 전멸이 악 진영의 승리 조건
+    expect(screen.getByText(/선 진영 전원 탈락 혹은 항복\(투항\), 또는 중립 진영 전원 탈락/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: '선 진영' }));
     expect(screen.getByText(/악 진영 전원 탈락, 또는 악 진영 전원이 항복/)).toBeTruthy();
