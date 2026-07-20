@@ -99,7 +99,7 @@ export class Room {
   private surrender: SurrenderState | null = null;
   private readonly surrenderTimer = new PhaseTimer();
   private lastInvestigation: InvestigationRecord | null = null;
-  private lastAnnouncement: string | null = null;
+  private lastAnnouncement: { text: string; durationMs: number } | null = null;
   /** 관리자가 정원을 채우려고 만든 가상 플레이어 id들 (13번 — 실제 소켓 없음, 관리자가 대신 조작) */
   private readonly virtualPlayerIds = new Set<string>();
   private virtualCounter = 0;
@@ -212,6 +212,18 @@ export class Room {
     if (requesterId !== this.hostId) return 'NOT_HOST';
     this.isPublic = isPublic;
     this.broadcastRoomState();
+    return null;
+  }
+
+  /**
+   * 강퇴 — 방장 전용, 게임 시작 전(대기방)에서만. 검증만 담당하고 실제 제거·통보·소켓 정리는
+   * registerHandlers.ts가 기존 leave 파이프라인(RoomManager.leave)을 재사용해 처리한다.
+   */
+  kick(requesterId: string, targetId: string): RoomError | null {
+    if (requesterId !== this.hostId) return 'NOT_HOST';
+    if (this.inGame) return 'ALREADY_IN_GAME';
+    if (targetId === requesterId) return 'NOT_ALLOWED';
+    if (!this.players.some((p) => p.id === targetId)) return 'NOT_IN_ROOM';
     return null;
   }
 
@@ -388,10 +400,12 @@ export class Room {
     }
     this.lastInvestigation = investigation;
 
-    // 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목 등 공개되는 순간 방 전체에 1회 중계
+    // 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목·구미호 유혹 등 공개되는 순간
+    // 방 전체에 1회 중계. 객체 참조 동일성으로 "새 발표인지" 판별한다(logic.ts/machine.ts가
+    // 실제로 새 문구가 생겼을 때만 새 객체를 만들고, 변화 없으면 기존 참조를 그대로 들고 있음)
     const announcement = snapshot.context.deathAnnouncement;
     if (announcement && announcement !== this.lastAnnouncement) {
-      const payload: AnnouncementPayload = { text: announcement };
+      const payload: AnnouncementPayload = { text: announcement.text, durationMs: announcement.durationMs };
       this.emitter.toRoom(SOCKET_EVENTS.gameAnnouncement, payload);
     }
     this.lastAnnouncement = announcement;

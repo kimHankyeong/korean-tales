@@ -139,6 +139,18 @@ export function registerHandlers(
       ack?.(error ? { ok: false, error } : { ok: true });
     });
 
+    socket.on(SOCKET_EVENTS.roomKick, (data: { targetId?: string }, ack?: Ack) => {
+      const room = manager.roomOf(playerId);
+      const targetId = data?.targetId ?? '';
+      const error = room ? room.kick(playerId, targetId) : 'NOT_IN_ROOM';
+      if (!error && room) {
+        io.to(targetId).emit(SOCKET_EVENTS.roomKicked, {});
+        io.sockets.sockets.get(targetId)?.leave(`room:${room.code}`);
+        manager.leave(targetId);
+      }
+      ack?.(error ? { ok: false, error } : { ok: true });
+    });
+
     /* ── 게임 ── */
 
     socket.on(SOCKET_EVENTS.gameAction, (action: ClientGameAction, ack?: Ack) => {

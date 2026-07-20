@@ -4,7 +4,7 @@
  * room:create/room:join의 name은 서버가 계정 닉네임으로 대체해 무시한다.
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   ROOM_OPTIONS,
   SOCKET_EVENTS,
@@ -41,16 +41,10 @@ export function RoomLobbyScreen() {
   const [showSkillBook, setShowSkillBook] = useState(false);
   const [showSound, setShowSound] = useState(false);
   const [showCharacterPick, setShowCharacterPick] = useState(false);
+  const [kickMenuFor, setKickMenuFor] = useState<string | null>(null);
+  // chat:message 구독은 AppRouter.tsx가 항상 마운트된 상태로 전역 처리한다 —
+  // 여기서 또 구독하면 메시지가 두 번씩 표시되는 중복 버그가 생긴다.
   const messages = useGameStore((s) => s.messages);
-  const applyChatMessage = useGameStore((s) => s.applyChatMessage);
-
-  useEffect(() => {
-    const socket = getSocket();
-    socket.on(SOCKET_EVENTS.chatMessage, applyChatMessage);
-    return () => {
-      socket.off(SOCKET_EVENTS.chatMessage, applyChatMessage);
-    };
-  }, [applyChatMessage]);
 
   async function updateSettings(patch: Partial<RoomSettingsPayload>) {
     setBusy(true);
@@ -79,6 +73,12 @@ export function RoomLobbyScreen() {
 
   async function toggleVisibility() {
     await emitWithAck<RoomAck>(SOCKET_EVENTS.roomVisibility, { isPublic: !room.isPublic });
+  }
+
+  async function kickPlayer(targetId: string) {
+    setKickMenuFor(null);
+    const ack = await emitWithAck<RoomAck>(SOCKET_EVENTS.roomKick, { targetId });
+    if (!ack.ok) setError(ack.error ?? '강퇴할 수 없어요.');
   }
 
   async function startAsAdmin(characterId: CharacterId | null, fillVirtual: boolean) {
@@ -156,7 +156,34 @@ export function RoomLobbyScreen() {
             <li key={p.id} className="flex items-center gap-2 rounded-lg bg-slate-800/60 px-3 py-1.5 text-sm">
               <span>{p.name}</span>
               {p.isHost && <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300">방장</span>}
-              {p.ready && <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">준비 완료</span>}
+              <div className="ml-auto flex items-center gap-1.5">
+                {p.ready && (
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
+                    준비 완료
+                  </span>
+                )}
+                {isHost && p.id !== myId && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setKickMenuFor(kickMenuFor === p.id ? null : p.id)}
+                      aria-label={`${p.name} 관리`}
+                      className="rounded-full px-1.5 py-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                    >
+                      ⋯
+                    </button>
+                    {kickMenuFor === p.id && (
+                      <button
+                        type="button"
+                        onClick={() => void kickPlayer(p.id)}
+                        className="absolute right-0 top-full z-10 mt-1 whitespace-nowrap rounded-lg border border-red-700 bg-slate-900 px-3 py-1 text-xs text-red-300 shadow-lg hover:bg-red-900/40"
+                      >
+                        강퇴
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </li>
           ))}
         </ul>

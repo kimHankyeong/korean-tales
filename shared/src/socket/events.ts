@@ -38,6 +38,10 @@ export const SOCKET_EVENTS = {
   roomList: 'room:list',
   /** C→S (ack, 방장 전용): 방 공개/비공개 전환 { isPublic: boolean } */
   roomVisibility: 'room:visibility',
+  /** C→S (ack, 방장 전용, 게임 시작 전만): 강퇴 { targetId: string } */
+  roomKick: 'room:kick',
+  /** S→강퇴당한 개인: 강퇴 통보 — 수신 즉시 로비로 이동 */
+  roomKicked: 'room:kicked',
   /** S→방 전체: 로비 상태 동기화 */
   roomState: 'room:state',
 
@@ -200,6 +204,8 @@ export interface GameOverPayload {
 /** 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목 등 사망 확정 순간 공개되는 정보 */
 export interface AnnouncementPayload {
   text: string;
+  /** 화면 중앙 표시 시간(ms) — 없으면 클라이언트 기본값(4000ms) 사용 */
+  durationMs?: number;
 }
 
 /**

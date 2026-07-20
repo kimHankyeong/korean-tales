@@ -105,6 +105,33 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     expect(room.hostId).toBe('u2');
   });
 
+  it('방장은 대기방에서 다른 플레이어를 강퇴할 수 있다 — 검증만 담당, 제거는 registerHandlers가 처리', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    expect(room.kick('u1', 'u2')).toBeNull(); // 검증 통과 — room.players에서 직접 지우지는 않음
+  });
+
+  it('방장이 아니면 강퇴할 수 없다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    room.join({ id: 'u3', name: '유저3' });
+    expect(room.kick('u2', 'u3')).toBe('NOT_HOST');
+  });
+
+  it('자기 자신은 강퇴할 수 없고, 방에 없는 사람도 강퇴할 수 없다', () => {
+    const { room } = makeRoom();
+    room.join({ id: 'u2', name: '유저2' });
+    expect(room.kick('u1', 'u1')).toBe('NOT_ALLOWED');
+    expect(room.kick('u1', 'nobody')).toBe('NOT_IN_ROOM');
+  });
+
+  it('게임이 시작된 뒤에는 강퇴할 수 없다', () => {
+    const { room } = makeRoom();
+    fillRoom(room); // 9명 참
+    expect(room.startGame('u1')).toBeNull();
+    expect(room.kick('u1', 'u2')).toBe('ALREADY_IN_GAME');
+  });
+
   it('인원이 모드와 다르면 시작할 수 없다', () => {
     const { room } = makeRoom();
     fillRoom(room, 5); // 6명뿐
@@ -319,7 +346,7 @@ describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {
     room.startGame('u1');
     const firstState = emitter.roomEvents.find((e) => e.event === SOCKET_EVENTS.gameState)!
       .payload as PublicGameState;
-    expect(firstState.phase).toBe('night.goodSkills'); // 게임은 항상 밤부터 시작
+    expect(firstState.phase).toBe('night.evilDiscussion'); // 게임은 항상 밤부터 시작 (13번 재배치)
 
     passNightZero(room);
     const states = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameState);
@@ -346,7 +373,7 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     session.send({ type: 'TIME_UP' }); // 토론 → 투표
     for (const id of ids) session.send({ type: 'VOTE', voterId: id, targetId: 'ABSTAIN' });
     session.send({ type: 'TIME_UP' }); // → 밤
-    expect(session.getSnapshot().matches({ night: 'goodSkills' })).toBe(true);
+    expect(session.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     return { roles, ids };
   }
 
@@ -356,6 +383,10 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     const haetaeId = ids.find((id) => roles[id]!.characterId === 'haetae')!;
     const targetId = ids.find((id) => id !== haetaeId)!;
 
+    // 해태/도깨비 스킬(goodSkills)은 13번 재배치로 악 토론→투표→개별스킬 뒤로 이동
+    room.session!.send({ type: 'TIME_UP' }); // evilDiscussion → evilVote
+    room.session!.send({ type: 'TIME_UP' }); // evilVote → evilSkills
+    room.session!.send({ type: 'TIME_UP' }); // evilSkills → goodSkills
     room.handleAction(haetaeId, { type: 'HAETAE_INVESTIGATE', targetId });
 
     expect(emitter.playerEventsOf(haetaeId, SOCKET_EVENTS.gameInvestigation)).toHaveLength(1);
@@ -375,10 +406,10 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     const companionId = ids.find((id) => id !== jeoseungId)!;
     const companionSeat = roles[companionId]!.seat;
 
-    session.send({ type: 'TIME_UP' }); // goodSkills → evilDiscussion
-    session.send({ type: 'TIME_UP' }); // → evilVote
+    session.send({ type: 'TIME_UP' }); // evilDiscussion → evilVote
     session.send({ type: 'TIME_UP' }); // (무투표) → evilSkills
     room.handleAction(jeoseungId, { type: 'JEOSEUNG_COMPANION', targetId: companionId });
+    session.send({ type: 'TIME_UP' }); // evilSkills → goodSkills
     session.send({ type: 'TIME_UP' }); // → dawn → flowerDecision (멸망꽃은 항상 가능)
     room.handleAction(jacheongbiId, { type: 'FLOWER_PASS' });
     while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
@@ -391,7 +422,10 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
 
     const announcements = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameAnnouncement);
     expect(announcements).toEqual([
-      { event: SOCKET_EVENTS.gameAnnouncement, payload: { text: `저승사자가 길동무로 ${companionSeat}번을 선택했습니다` } },
+      {
+        event: SOCKET_EVENTS.gameAnnouncement,
+        payload: { text: `저승사자가 길동무로 ${companionSeat}번을 선택했습니다`, durationMs: 4000 },
+      },
     ]);
   });
 

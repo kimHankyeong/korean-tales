@@ -44,9 +44,14 @@ export function AppRouter() {
         signOut();
       }
     }
+    // 방장에게 강퇴당함 — 즉시 로비로 돌려보낸다
+    function onKicked() {
+      leaveRoom();
+    }
 
     socket.on(SOCKET_EVENTS.roomState, onRoomState);
     socket.on('connect_error', onConnectError);
+    socket.on(SOCKET_EVENTS.roomKicked, onKicked);
 
     // 게임 이벤트 구독은 GameScreen이 아니라 여기(항상 마운트돼 있는 라우터)에 둔다 —
     // 서버는 게임 시작 시 game:role을 room:state보다 먼저 보내는데, GameScreen은
@@ -79,9 +84,9 @@ export function AppRouter() {
       setAnnouncement(text);
     };
 
-    // 길동무 동반 사망·유서 대상 지목 등 방 전체 공개 발표 문구 — 화면 중앙 4초
-    const onAnnouncement: Parameters<typeof socket.on>[1] = (payload: { text: string }) => {
-      setAnnouncement(payload.text);
+    // 길동무 동반 사망·유서 대상 지목·구미호 유혹 등 방 전체 공개 발표 문구 — 화면 중앙
+    const onAnnouncement: Parameters<typeof socket.on>[1] = (payload: { text: string; durationMs?: number }) => {
+      setAnnouncement(payload.text, payload.durationMs);
     };
 
     socket.on(SOCKET_EVENTS.gameRole, applyRole);
@@ -99,6 +104,7 @@ export function AppRouter() {
     return () => {
       socket.off(SOCKET_EVENTS.roomState, onRoomState);
       socket.off('connect_error', onConnectError);
+      socket.off(SOCKET_EVENTS.roomKicked, onKicked);
       socket.off(SOCKET_EVENTS.gameRole, applyRole);
       socket.off(SOCKET_EVENTS.gameState, applyGameState);
       socket.off(SOCKET_EVENTS.gameOver, applyGameOver);
@@ -111,7 +117,7 @@ export function AppRouter() {
       socket.off(SOCKET_EVENTS.adminRoster, applyAdminRoster);
       socket.off(SOCKET_EVENTS.gameAnnouncement, onAnnouncement);
     };
-  }, [status, applyRoomState, signOut]);
+  }, [status, applyRoomState, signOut, leaveRoom]);
 
   useEffect(() => {
     if (status === 'SIGNED_OUT') {
