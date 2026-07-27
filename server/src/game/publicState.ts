@@ -30,14 +30,20 @@ export function toPublicGameState(
   meta: Record<string, PlayerMeta>,
 ): PublicGameState {
   const { context } = snapshot;
+  const phase = snapshot.status === 'done' ? 'gameOver' : phasePath(snapshot.value);
+  // 밤 사망은 새벽(dawn)~resolveDeaths(밤→낮 경로) 동안 내부적으로 확정되지만, 낮이 시작되어
+  // 공식 발표될 때까지 다른 플레이어에게 노출되면 안 된다(4-c 피드백) — 이 구간에는 밤 시작
+  // 시점의 생존 스냅샷을 그대로 공개해 조기 노출을 막는다
+  const maskNightDeaths =
+    phase === 'night.dawn' || (phase.startsWith('resolveDeaths') && context.resumeAfterDeaths === 'DAY_DISCUSSION');
   return {
-    phase: snapshot.status === 'done' ? 'gameOver' : phasePath(snapshot.value),
+    phase,
     day: context.day,
     players: context.players.map((p) => ({
       id: p.id,
       name: meta[p.id]?.name ?? p.id,
       seat: p.seat,
-      alive: p.alive,
+      alive: maskNightDeaths ? (context.nightStartAlive[p.id] ?? p.alive) : p.alive,
       avatarUrl: meta[p.id]?.avatarUrl ?? null,
     })),
     advisorId: context.advisorId,

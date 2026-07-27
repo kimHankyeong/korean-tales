@@ -61,7 +61,7 @@ describe('공개 게임 상태 (정보 은닉의 단일 관문)', () => {
 
   it('공개 상태에는 페이즈·생존 여부·이름·아바타가 포함된다', () => {
     const { actor, snapshot } = startSnapshot();
-    for (let i = 0; i < 5; i++) actor.send({ type: 'TIME_UP' }); // 밤 0 + 꽃 선택 자동 패스
+    for (let i = 0; i < 4; i++) actor.send({ type: 'TIME_UP' }); // 밤 0(자청비 부활꽃/멸망꽃 goodSkills에 통합) 자동 패스
     const state = toPublicGameState(snapshot(), {
       p1: { name: '갑', avatarUrl: '/uploads/avatars/u1.webp' },
     });

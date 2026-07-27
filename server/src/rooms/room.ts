@@ -26,13 +26,15 @@ import {
   type RoomSettingsPayload,
   type RoomStatePayload,
   type SurrenderProgressPayload,
+  type VoteResultPayload,
 } from '@korean-tales/shared';
 import { isActionAllowed } from '../game/actionAuth';
-import { assignCharacters } from '../game/assign';
+import { assignCharacters, shuffle } from '../game/assign';
 import { buildGameResult, phasePath, toPublicGameState } from '../game/publicState';
 import { GameSession, type GameSnapshot } from '../game/session';
 import { PhaseTimer } from '../game/timer';
 import type { GamePlayer, InvestigationRecord } from '../game/types';
+import type { GameHistoryRecord } from '../history/service';
 
 /** 소켓 전송 추상화 — registerHandlers가 io 기반 구현을 주입한다 */
 export interface RoomEmitter {
@@ -100,6 +102,7 @@ export class Room {
   private readonly surrenderTimer = new PhaseTimer();
   private lastInvestigation: InvestigationRecord | null = null;
   private lastAnnouncement: { text: string; durationMs: number } | null = null;
+  private lastVoteResult: Record<string, string> | null = null;
   /** 관리자가 정원을 채우려고 만든 가상 플레이어 id들 (13번 — 실제 소켓 없음, 관리자가 대신 조작) */
   private readonly virtualPlayerIds = new Set<string>();
   private virtualCounter = 0;
@@ -112,6 +115,8 @@ export class Room {
     private readonly emitter: RoomEmitter,
     private readonly rng: () => number = Math.random,
     private readonly now: () => number = Date.now,
+    /** 게임 종료 시 호출 — 로그인 유저 전적 기록용(2번 항목). Room은 저장 방식을 모른다 */
+    private readonly onGameOver?: (record: GameHistoryRecord) => void,
   ) {
     this.code = code;
     this.hostId = host.id;
@@ -309,11 +314,13 @@ export class Room {
       fixedCharacter ? { [fixedCharacter.playerId]: fixedCharacter.characterId } : undefined,
     );
 
-    const gamePlayers: GamePlayer[] = this.players.map((p, i) => {
+    // 좌석 번호는 입장 순서와 무관하게 무작위 배정 (8번 피드백)
+    const seatOrder = shuffle(this.players.map((p) => p.id), this.rng);
+    const gamePlayers: GamePlayer[] = this.players.map((p) => {
       const characterId = assignment[p.id]!;
       return {
         id: p.id,
-        seat: i + 1, // 배정 번호 = 입장 순서
+        seat: seatOrder.indexOf(p.id) + 1,
         characterId,
         faction: CHARACTER_BY_ID[characterId].faction,
         alive: true,
@@ -336,12 +343,14 @@ export class Room {
       now: this.now,
     });
 
-    // 3) 본인 캐릭터만 비공개 전송 — 남의 직업은 절대 알 수 없음
+    // 3) 본인 캐릭터만 비공개 전송 — 남의 직업은 절대 알 수 없음.
+    // 악 진영에게만 팀원 id 목록도 함께 실어 보내 서로 알아볼 수 있게 한다(3번 피드백)
     for (const gp of gamePlayers) {
       this.emitter.toPlayer(gp.id, SOCKET_EVENTS.gameRole, {
         characterId: gp.characterId,
         faction: gp.faction,
         seat: gp.seat,
+        teammateIds: this.evilTeammateIds(gamePlayers, gp),
       });
     }
 
@@ -358,6 +367,12 @@ export class Room {
     return Object.fromEntries(
       this.players.map((p) => [p.id, { name: p.name, avatarUrl: p.avatarUrl }]),
     );
+  }
+
+  /** 악 진영끼리 서로 알아볼 수 있게(3번 피드백) — 대상이 악 진영이 아니면 항상 빈 배열 */
+  private evilTeammateIds(players: readonly GamePlayer[], self: GamePlayer): string[] {
+    if (self.faction !== 'EVIL') return [];
+    return players.filter((p) => p.faction === 'EVIL' && p.id !== self.id).map((p) => p.id);
   }
 
   private broadcastPublicState(snapshot: GameSnapshot): void {
@@ -385,6 +400,48 @@ export class Room {
     });
   }
 
+  /**
+   * 자청비 부활꽃 대상 후보 전송 — 그날 밤 악 진영의 킬 대상(도깨비 보호 여부는 아직 미확정,
+   * 4번 섹션) 한 명뿐. 해태·도깨비와 같은 goodSkills 시간에 함께 노출된다(본인에게만).
+   * 자청비가 가상 플레이어면 마찬가지로 관리자에게도 보내야 대신 선택할 수 있다.
+   * onSnapshot(상태 변화 시)과 resyncPlayer(재접속 복구 시) 양쪽에서 재사용한다.
+   */
+  private sendFlowerOptions(snapshot: GameSnapshot, onlyToPlayerId?: string): void {
+    if (phasePath(snapshot.value) !== 'night.goodSkills') return;
+    const jacheongbi = snapshot.context.players.find((p) => p.characterId === 'jacheongbi');
+    if (!jacheongbi?.alive) return;
+    if (onlyToPlayerId && jacheongbi.id !== onlyToPlayerId) return;
+    const revivableTargetIds = snapshot.context.nightKillTargetId ? [snapshot.context.nightKillTargetId] : [];
+    this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+    if (this.virtualPlayerIds.has(jacheongbi.id) && this.adminPlayerId) {
+      this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+    }
+  }
+
+  /**
+   * 재접속(새로고침 등)한 플레이어에게 현재 방/게임 상태를 다시 밀어준다 (1번 섹션
+   * "새로고침·재접속 복구"). 로그인 유저는 소켓 신원이 계정 id로 고정되어 있어, 이 방의
+   * 멤버였다면 재연결 시 registerHandlers.ts가 이 메서드를 호출한다.
+   */
+  resyncPlayer(playerId: string): void {
+    this.emitter.toPlayer(playerId, SOCKET_EVENTS.roomState, this.toState());
+    if (!this.session) return;
+    const snapshot = this.session.getSnapshot();
+    const gp = snapshot.context.players.find((p) => p.id === playerId);
+    if (gp) {
+      this.emitter.toPlayer(playerId, SOCKET_EVENTS.gameRole, {
+        characterId: gp.characterId,
+        faction: gp.faction,
+        seat: gp.seat,
+        teammateIds: this.evilTeammateIds(snapshot.context.players, gp),
+      });
+    }
+    this.emitter.toPlayer(playerId, SOCKET_EVENTS.gameState, toPublicGameState(snapshot, this.playerMeta()));
+    const timerSync = this.session.currentTimerSync();
+    if (timerSync) this.emitter.toPlayer(playerId, SOCKET_EVENTS.timerSync, timerSync);
+    this.sendFlowerOptions(snapshot, playerId);
+  }
+
   private onSnapshot(snapshot: GameSnapshot): void {
     // 해태 투사 결과 — 본인에게만 (새 결과가 기록된 경우에만 1회). 해태가 가상 플레이어면
     // 실제 소켓이 없어 결과를 볼 수 없으므로, 대신 조작해야 할 관리자에게도 함께 보낸다
@@ -410,27 +467,16 @@ export class Room {
     }
     this.lastAnnouncement = announcement;
 
-    // 자청비 부활꽃 대상 후보 — 그날 밤 악 진영 킬 사망자만 (본인에게만, 5번 섹션).
-    // 자청비가 가상 플레이어면 마찬가지로 관리자에게도 보내야 대신 선택할 수 있다
-    if (phasePath(snapshot.value) === 'day.flowerDecision') {
-      const jacheongbi = snapshot.context.players.find((p) => p.characterId === 'jacheongbi');
-      if (jacheongbi?.alive) {
-        const revivableTargetIds = snapshot.context.pendingDeaths
-          .filter((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied)
-          .map((d) => d.playerId);
-        // 도깨비 장난으로 살아남은 대상 — 실제로는 되살릴 필요가 없지만, 선택 시 둘 다 소모 처리된다
-        if (
-          snapshot.context.dokkaebiSavedTargetId &&
-          !revivableTargetIds.includes(snapshot.context.dokkaebiSavedTargetId)
-        ) {
-          revivableTargetIds.push(snapshot.context.dokkaebiSavedTargetId);
-        }
-        this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
-        if (this.virtualPlayerIds.has(jacheongbi.id) && this.adminPlayerId) {
-          this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
-        }
-      }
+    // 낮 처형 투표(또는 재투표) 종료 직후 3초간 투표 내역 공개 (9번 피드백) — 새 결과가
+    // 생겼을 때만(참조 동일성) 1회 중계
+    const voteResult = snapshot.context.lastVoteResult;
+    if (voteResult && voteResult !== this.lastVoteResult) {
+      const payload: VoteResultPayload = { votes: { ...voteResult }, durationMs: 3000 };
+      this.emitter.toRoom(SOCKET_EVENTS.gameVoteResult, payload);
     }
+    this.lastVoteResult = voteResult;
+
+    this.sendFlowerOptions(snapshot);
 
     this.broadcastPublicState(snapshot);
     this.broadcastAdminRoster(snapshot.context.players);
@@ -438,11 +484,29 @@ export class Room {
     // 게임 종료 — 이때만 역할 전체 공개 + 개인별 승패 귀속 (중립은 생존 시 승리 팀 합류)
     if (snapshot.status === 'done' && snapshot.context.winner) {
       this.cancelSurrender('COMPLETED_GAME');
-      const payload: GameOverPayload = buildGameResult(
-        snapshot.context.players,
-        snapshot.context.winner,
-      );
+      const winner = snapshot.context.winner;
+      const payload: GameOverPayload = buildGameResult(snapshot.context.players, winner);
       this.emitter.toRoom(SOCKET_EVENTS.gameOver, payload);
+
+      // 전적 기록(2번 항목) — 로그인 유저 참가자만. 게스트·가상 플레이어는 계정이 없어 제외된다
+      if (this.onGameOver) {
+        const isWinnerOf = new Map(payload.roles.map((r) => [r.playerId, r.isWinner]));
+        const participants = snapshot.context.players.flatMap((p) => {
+          const accountId = this.players.find((rp) => rp.id === p.id)?.accountId;
+          if (!accountId) return [];
+          return [
+            {
+              accountId,
+              seat: p.seat,
+              characterId: p.characterId,
+              faction: p.faction,
+              isWinner: isWinnerOf.get(p.id) ?? false,
+            },
+          ];
+        });
+        this.onGameOver({ mode: this.settings.mode, winner, participants });
+      }
+
       this.endSession();
     }
   }

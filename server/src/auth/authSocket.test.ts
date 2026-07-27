@@ -111,4 +111,41 @@ describe('소켓 핸드셰이크 ↔ 계정 연동 (requirements 11번)', () => 
     const state = created.room as RoomStatePayload;
     expect(state.players[0]!.name).toBe('수상한자'); // USER 신원 미부여
   });
+
+  it('새로고침(소켓 재연결)해도 같은 계정이면 방 멤버십이 유지되고 현재 상태를 다시 받는다 (1번 섹션)', async () => {
+    const signup = await app.inject({
+      method: 'POST',
+      url: '/auth/signup',
+      payload: { email: 'reconnect@example.com', password: 'password123', nickname: '재접속유저' },
+    });
+    expect(signup.statusCode).toBe(201);
+    const token = signup.json().token as string;
+
+    // 최초 접속 → 방 생성
+    const first = await connect(token);
+    const created = await first.emitWithAck(SOCKET_EVENTS.roomCreate, {});
+    expect(created.ok).toBe(true);
+    const code = (created.room as RoomStatePayload).code;
+
+    // 새로고침 시뮬레이션: 기존 소켓을 끊고, 같은 토큰으로 새 소켓을 연결
+    first.disconnect();
+
+    // 서버가 connection 처리 중(동기적으로) 바로 room:state를 다시 보내므로, 클라이언트
+    // 'connect' 이벤트보다 먼저 리스너를 걸어둬야 놓치지 않는다
+    const second = connectClient(`http://127.0.0.1:${port}`, {
+      transports: ['websocket'],
+      auth: { token },
+    });
+    clients.push(second);
+    const resyncedPromise = new Promise<RoomStatePayload>((resolve) => {
+      second.on(SOCKET_EVENTS.roomState, resolve);
+    });
+    await new Promise<void>((resolve) => second.once('connect', () => resolve()));
+    const resynced = await resyncedPromise;
+    expect(resynced.code).toBe(code); // 재접속 시 서버가 능동적으로 같은 방 상태를 다시 보냄
+    expect(resynced.players).toHaveLength(1);
+
+    const room = manager.get(code)!;
+    expect(room.players).toHaveLength(1); // 유령 잔류 없음 — 원래 자리 그대로
+  }, 15_000);
 });

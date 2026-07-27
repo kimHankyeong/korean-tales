@@ -15,15 +15,18 @@ import type {
   PublicPlayerState,
   SurrenderProgressPayload,
   TimerSyncPayload,
+  VoteResultPayload,
 } from '@korean-tales/shared';
 import type { ChatMessageView } from '../components/ChatWindow';
 import type { CountdownTarget } from '../components/CountdownText';
 import { applyBgmVolume, loadBgmVolume } from '../lib/bgm';
 import { formatSpeechOrderLabel, type PhaseKind } from '../lib/format';
+import { playSfx } from '../lib/sfx';
 
 let nextMessageId = 1;
 const messageId = () => `m${nextMessageId++}`;
 let nextAnnouncementId = 1;
+let nextVoteResultId = 1;
 
 export interface GameUiState {
   myId: string;
@@ -59,12 +62,23 @@ export interface GameUiState {
    */
   suspicionMarks: Record<string, string>;
   /**
+   * 메모장 — 언제든 자유롭게 적어두는 개인 메모 줄들(10번 피드백). suspicionMarks와 같은 이유로
+   * 순수 클라이언트 로컬 상태이며 서버에는 전송되지 않는다. 채팅으로 보낼 때만 그 내용을
+   * sendChat 경로로 전송한다. 새 게임 시작 시 초기화.
+   */
+  memoLines: string[];
+  /**
    * 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목·구미호 유혹(game:announcement),
    * 투사 결과(gameInvestigation, 해태 본인에게만) 공용. 표시 시간은 문구마다 다를 수 있다
    * (예: 유혹 안내 3초, 나머지 4초). id는 같은 문구가 연속으로 와도 매번 새로 타이머가
    * 돌게 하기 위한 값.
    */
   announcement: { id: number; text: string; durationMs: number } | null;
+  /**
+   * 낮 처형 투표(재투표 포함) 종료 직후 3초간 표시할 투표 내역(game:voteResult, 9번 피드백).
+   * id는 announcement와 같은 이유로 같은 내용이 연속으로 와도 타이머를 새로 걸기 위한 값.
+   */
+  voteResult: { id: number; votes: Record<string, string>; durationMs: number } | null;
 
   setMyId(id: string): void;
   setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
@@ -82,9 +96,15 @@ export interface GameUiState {
   applyAdminRoster(payload: AdminRosterPayload): void;
   /** 추측 아이콘 설정 — emoji가 빈 문자열/null이면 지운다 */
   setSuspicionMark(playerId: string, emoji: string | null): void;
+  /** 메모장에 새 줄 추가 (10번 피드백) */
+  addMemoLine(text: string): void;
+  /** 메모장 줄 삭제 */
+  removeMemoLine(index: number): void;
   /** 화면 중앙 발표 문구 표시(4초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
   setAnnouncement(text: string, durationMs?: number): void;
   clearAnnouncement(): void;
+  applyVoteResult(payload: VoteResultPayload): void;
+  clearVoteResult(): void;
 
   setPhase(phase: PhaseKind): void;
   setCondemned(id: string | null): void;
@@ -131,7 +151,9 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   flowerOptions: null,
   adminRoster: [],
   suspicionMarks: {},
+  memoLines: [],
   announcement: null,
+  voteResult: null,
 
   setMyId: (id) => set({ myId: id }),
 
@@ -154,7 +176,9 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       condemnedId: null,
       timer: null,
       suspicionMarks: {},
+      memoLines: [],
       announcement: null,
+      voteResult: null,
     }),
 
   applyRole: (role) => set({ role }),
@@ -169,11 +193,31 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       return { suspicionMarks: next };
     }),
 
+  addMemoLine: (text) =>
+    set((state) => {
+      const trimmed = text.trim();
+      if (!trimmed) return {};
+      return { memoLines: [...state.memoLines, trimmed] };
+    }),
+  removeMemoLine: (index) =>
+    set((state) => ({ memoLines: state.memoLines.filter((_, i) => i !== index) })),
+
   setAnnouncement: (text, durationMs = 4000) =>
     set({ announcement: { id: nextAnnouncementId++, text, durationMs } }),
   clearAnnouncement: () => set({ announcement: null }),
 
-  applyGameState: (publicState) =>
+  applyVoteResult: (payload) =>
+    set({
+      voteResult: {
+        id: nextVoteResultId++,
+        votes: payload.votes,
+        durationMs: payload.durationMs ?? 3000,
+      },
+    }),
+  clearVoteResult: () => set({ voteResult: null }),
+
+  applyGameState: (publicState) => {
+    const prevPhasePath = get().publicState?.phase;
     set((state) => {
       const phase: PhaseKind = publicState.phase.startsWith('night') ? 'NIGHT' : 'DAY';
       // 최후의 변론·개인 발언 둘 다 "이 사람만 채팅 가능" 메커니즘을 공유한다 (ChatWindow)
@@ -185,8 +229,8 @@ export const useGameStore = create<GameUiState>((set, get) => ({
             : null;
 
       // 개인 발언 차례가 바뀔 때마다 발언 순서 안내 시스템 메시지 추가
-      const prevSpeakerId =
-        state.publicState?.phase === 'day.personalSpeech' ? state.publicState.currentSpeakerId : null;
+      const prevPhase = state.publicState?.phase;
+      const prevSpeakerId = prevPhase === 'day.personalSpeech' ? state.publicState!.currentSpeakerId : null;
       let messages = state.messages;
       if (
         publicState.phase === 'day.personalSpeech' &&
@@ -204,8 +248,34 @@ export const useGameStore = create<GameUiState>((set, get) => ({
         ];
       }
 
+      // 개인 발언이 모두 끝나고 전체 토론으로 전환되는 순간 안내 (12번 피드백)
+      if (publicState.phase === 'day.discussion' && prevPhase === 'day.personalSpeech') {
+        messages = [...messages, { id: messageId(), kind: 'SYSTEM', text: '전체발언시간이 시작되었습니다.' }];
+      }
+
+      // 최후의 발언(변론) 시작 안내 — 처형 확정자 번호 포함 (11번 피드백)
+      if (publicState.phase === 'day.finalPlea' && prevPhase !== 'day.finalPlea') {
+        const seat = publicState.players.find((p) => p.id === publicState.executionTargetId)?.seat;
+        if (seat != null) {
+          messages = [...messages, { id: messageId(), kind: 'SYSTEM', text: `${seat}번의 최후의 발언` }];
+        }
+      }
+
       return { publicState, phase, players: publicState.players, condemnedId, messages };
-    }),
+    });
+
+    // 밤/낮 전환·투표 시작 효과음(10번 피드백) — 실제로 phase 문자열이 바뀐 순간에만 1회
+    if (prevPhasePath !== publicState.phase) {
+      if (publicState.phase.startsWith('night') && !prevPhasePath?.startsWith('night')) {
+        playSfx('NIGHT');
+      } else if (!publicState.phase.startsWith('night') && prevPhasePath?.startsWith('night')) {
+        playSfx('DAY');
+      }
+      if (publicState.phase === 'day.vote' || publicState.phase === 'day.revote') {
+        playSfx('VOTE');
+      }
+    }
+  },
 
   applyGameOver: (gameOverResult) => set({ gameOverResult }),
 
@@ -216,6 +286,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
         {
           id: messageId(),
           kind: 'CHAT',
+          senderId: payload.senderId,
           senderName: payload.channel === 'EVIL' ? `${payload.senderName} (악)` : payload.senderName,
           senderSeat: state.players.find((p) => p.id === payload.senderId)?.seat,
           text: payload.text,
@@ -257,6 +328,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
         {
           id: messageId(),
           kind: 'CHAT',
+          senderId: myId,
           senderName: me?.name ?? '나',
           senderSeat: me?.seat,
           senderAvatarUrl: myProfile.profileImageUrl,

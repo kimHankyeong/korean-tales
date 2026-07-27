@@ -56,9 +56,9 @@ describe('특수 규칙 필드', () => {
     expect(compassion?.revivableCauses).toBe('ANY');
   });
 
-  it('피 맺힌 유서는 멸망꽃 사망 시 봉인되고, 포기 가능하다', () => {
+  it('피 맺힌 유서는 멸망꽃 사망 또는 저승사자 길동무 동반 사망 시 봉인되고, 포기 가능하다', () => {
     const grudge = CHARACTER_BY_ID.janghwa.skills[0];
-    expect(grudge?.sealedByDeathCauses).toEqual(['DOOM_FLOWER']);
+    expect(grudge?.sealedByDeathCauses).toEqual(['DOOM_FLOWER', 'COMPANION_DEATH']);
     expect(grudge?.canForgo).toBe(true);
   });
 

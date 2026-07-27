@@ -91,6 +91,7 @@ export function LobbyMenuScreen({ onStart }: { onStart: () => void }) {
             const result = await api.updatePassword(currentPassword, newPassword);
             return result.ok ? null : result.error;
           }}
+          onFetchMatchHistory={api.fetchMatchHistory}
           onClose={() => setShowMyPage(false)}
         />
       )}

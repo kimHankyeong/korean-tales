@@ -25,6 +25,7 @@ model User {
   profileImageUrl String?
   createdAt       DateTime  @default(now())
   sessions        Session[]
+  gameParticipations GameParticipant[]
 }
 
 /// httpOnly 세션 쿠키의 서버측 저장소 — 토큰은 불투명(opaque) 랜덤 값
@@ -36,4 +37,35 @@ model Session {
   expiresAt DateTime
 
   @@index([userId])
+}
+
+/// 완료된 게임 1판 — 마이페이지 최근 전적(11번)의 원본. 게스트(계정 없는 참가자)는
+/// GameParticipant에 기록되지 않으므로, 게스트만 있던 판은 이 모델만 남고 참가자가 비어 있을 수 있다
+model Game {
+  id           String            @id @default(cuid())
+  /// 7 또는 9 — ROOM_OPTIONS.playerModes
+  mode         Int
+  /// Faction('EVIL' | 'GOOD') 문자열 그대로 저장
+  winner       String
+  playedAt     DateTime          @default(now())
+  participants GameParticipant[]
+
+  @@index([playedAt])
+}
+
+/// 게임 1판의 로그인 유저 참가 기록 1인분 — 좌석·직업·승패
+model GameParticipant {
+  id          String   @id @default(cuid())
+  game        Game     @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  gameId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  seat        Int
+  /// CharacterId 문자열 그대로 저장
+  characterId String
+  /// Faction 문자열 그대로 저장
+  faction     String
+  isWinner    Boolean
+
+  @@index([userId, gameId])
 }

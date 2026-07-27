@@ -25,6 +25,18 @@ describe('채팅창 (requirements 6번 + 최후의 변론 5-5항)', () => {
     expect(screen.getByText('바우')).toBeTruthy();
   });
 
+  it('teammateIds에 포함된 발신자의 닉네임만 빨갛게 표시된다 (3번 피드백)', () => {
+    renderChat({
+      messages: [
+        { id: 'm4', kind: 'CHAT', senderId: 'p2', senderName: '악당', text: '흠' },
+        { id: 'm5', kind: 'CHAT', senderId: 'p3', senderName: '선량', text: '흠흠' },
+      ],
+      teammateIds: ['p2'],
+    });
+    expect(screen.getByText('악당').className).toContain('text-red-400');
+    expect(screen.getByText('선량').className).not.toContain('text-red-400');
+  });
+
   it('발신자 배정 번호가 있으면 "n번.닉네임" 형태로 표시된다', () => {
     renderChat({
       messages: [{ id: 'm3', kind: 'CHAT', senderName: '바우', senderSeat: 5, text: '안녕' }],

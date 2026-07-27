@@ -3,6 +3,7 @@
  */
 
 import type { RoomSummary } from '@korean-tales/shared';
+import type { GameHistoryRecord } from '../history/service';
 import { Room, type JoiningPlayer, type RoomEmitter } from './room';
 
 /** 혼동되기 쉬운 문자(0/O, 1/I)를 뺀 방 코드 문자셋 */
@@ -18,6 +19,8 @@ export class RoomManager {
     private readonly createEmitter: (roomCode: string) => RoomEmitter,
     private readonly rng: () => number = Math.random,
     private readonly now: () => number = Date.now,
+    /** 게임 종료 시 각 Room에 주입할 전적 기록 콜백(2번 항목) — 미지정이면 기록하지 않는다 */
+    private readonly onGameOver?: (record: GameHistoryRecord) => void,
   ) {}
 
   private generateCode(): string {
@@ -33,7 +36,7 @@ export class RoomManager {
   create(host: JoiningPlayer): Room {
     this.leave(host.id); // 기존 방에서 제거
     const code = this.generateCode();
-    const room = new Room(code, host, this.createEmitter(code), this.rng, this.now);
+    const room = new Room(code, host, this.createEmitter(code), this.rng, this.now, this.onGameOver);
     this.rooms.set(code, room);
     this.memberships.set(host.id, code);
     return room;

@@ -33,6 +33,22 @@ describe('플레이어 목록 — 조언자 지팡이 표시', () => {
   });
 });
 
+describe('플레이어 목록 — 악 진영 팀원 강조 (3번 피드백)', () => {
+  it('teammateIds에 포함된 플레이어의 닉네임만 빨갛게 표시된다', () => {
+    render(<PlayerListPanel players={players} teammateIds={['p2']} />);
+    const p1Name = screen.getByText('달래');
+    const p2Name = screen.getByText('바우');
+    expect(p1Name.className).not.toContain('text-red-400');
+    expect(p2Name.className).toContain('text-red-400');
+  });
+
+  it('teammateIds 미지정(선/중립 본인)이면 아무도 빨갛게 표시되지 않는다', () => {
+    render(<PlayerListPanel players={players} />);
+    expect(screen.getByText('달래').className).not.toContain('text-red-400');
+    expect(screen.getByText('바우').className).not.toContain('text-red-400');
+  });
+});
+
 describe('플레이어 목록 — 닉네임 축약 표시', () => {
   it('4글자 넘는 닉네임은 "..."으로 축약되고, 원래 이름은 화면에 없다', () => {
     render(

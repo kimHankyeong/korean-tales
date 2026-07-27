@@ -3,6 +3,7 @@
  * Authorization 헤더로 실어 보낸다 (쿠키를 쓰지 않는 이유는 lib/authToken.ts 참고).
  */
 
+import type { CharacterId, Faction, PlayerMode } from '@korean-tales/shared';
 import { getToken } from './authToken';
 import { SERVER_URL } from './serverUrl';
 
@@ -96,6 +97,24 @@ export async function uploadAvatar(
   return response.ok && body.user
     ? { ok: true, user: body.user }
     : { ok: false, error: body.error ?? 'UNKNOWN' };
+}
+
+/** 마이페이지 최근 전적(2번 항목) 1개 — 본인 결과 + 그 판 전원(로그인 유저만)의 좌석/직업/닉네임/승패 */
+export interface MatchHistoryEntry {
+  gameId: string;
+  playedAt: string;
+  mode: PlayerMode;
+  winner: Faction;
+  mySeat: number;
+  myCharacterId: CharacterId;
+  isWinner: boolean;
+  players: Array<{ seat: number; characterId: CharacterId; nickname: string; isWinner: boolean }>;
+}
+
+export async function fetchMatchHistory(): Promise<MatchHistoryEntry[]> {
+  const response = await request('/profile/history');
+  if (!response.ok) return [];
+  return ((await response.json()) as { matches: MatchHistoryEntry[] }).matches;
 }
 
 export async function updatePassword(

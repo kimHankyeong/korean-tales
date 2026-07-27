@@ -4,7 +4,8 @@
  * 서버 호출은 콜백으로 주입받아 데모(목)와 실서버 연동 양쪽에서 동작한다.
  */
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { CHARACTER_BY_ID, FACTION_META, type CharacterId, type Faction, type PlayerMode } from '@korean-tales/shared';
 import { AVATAR_ERROR_MESSAGES, validateAvatarFile } from '../lib/avatarUpload';
 import { Avatar } from './Avatar';
 import { AvatarCropModal } from './AvatarCropModal';
@@ -12,6 +13,18 @@ import { AvatarCropModal } from './AvatarCropModal';
 export interface MyPageUser {
   nickname: string;
   profileImageUrl: string | null;
+}
+
+/** 최근 전적(2번 항목) 1개 — 본인 결과 + 그 판 전원(로그인 유저만)의 좌석/직업/닉네임/승패 */
+export interface MyPageMatchHistoryEntry {
+  gameId: string;
+  playedAt: string;
+  mode: PlayerMode;
+  winner: Faction;
+  mySeat: number;
+  myCharacterId: CharacterId;
+  isWinner: boolean;
+  players: Array<{ seat: number; characterId: CharacterId; nickname: string; isWinner: boolean }>;
 }
 
 export interface MyPageProps {
@@ -25,6 +38,8 @@ export interface MyPageProps {
   onChangeBgmVolume: (volume: number) => void;
   /** 비밀번호 변경 — 실패 시 에러 메시지 반환, 성공 시 null. 미지정 시 비밀번호 변경 UI 숨김 */
   onChangePassword?: (currentPassword: string, newPassword: string) => Promise<string | null>;
+  /** 최근 전적 조회 — 미지정 시 전적 섹션 숨김 */
+  onFetchMatchHistory?: () => Promise<MyPageMatchHistoryEntry[]>;
   onClose: () => void;
 }
 
@@ -35,6 +50,7 @@ export function MyPage({
   bgmVolume,
   onChangeBgmVolume,
   onChangePassword,
+  onFetchMatchHistory,
   onClose,
 }: MyPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -46,6 +62,14 @@ export function MyPage({
   const [newPassword, setNewPassword] = useState('');
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
   const [passwordBusy, setPasswordBusy] = useState(false);
+  const [matches, setMatches] = useState<MyPageMatchHistoryEntry[] | null>(null);
+  const [expandedGameId, setExpandedGameId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!onFetchMatchHistory) return;
+    void onFetchMatchHistory().then(setMatches);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function onFileSelected(file: File | undefined) {
     if (!file) return;
@@ -88,7 +112,7 @@ export function MyPage({
 
   return (
     <div className="fixed inset-0 z-[65] grid place-items-center bg-black/60 p-4" role="dialog" aria-label="마이페이지">
-      <section className="flex w-full max-w-sm flex-col items-center gap-4 rounded-xl border border-slate-600 bg-slate-900 p-6">
+      <section className="flex max-h-[85vh] w-full max-w-sm flex-col items-center gap-4 overflow-y-auto rounded-xl border border-slate-600 bg-slate-900 p-6">
         <h1 className="text-base font-bold text-amber-300">마이페이지</h1>
 
         {/* 현재 프로필 사진 — 미설정 시 기본 아바타 */}
@@ -189,6 +213,64 @@ export function MyPage({
                 {passwordMessage}
               </p>
             )}
+          </div>
+        )}
+
+        {onFetchMatchHistory && (
+          <div className="w-full space-y-1.5 border-t border-slate-700 pt-3">
+            <p className="text-xs text-slate-400">최근 전적</p>
+            {matches === null && <p className="text-center text-xs text-slate-500">불러오는 중…</p>}
+            {matches !== null && matches.length === 0 && (
+              <p className="text-center text-xs text-slate-500">아직 완료한 게임이 없어요.</p>
+            )}
+            {matches?.map((match) => {
+              const expanded = expandedGameId === match.gameId;
+              const myCharacter = CHARACTER_BY_ID[match.myCharacterId];
+              return (
+                <div key={match.gameId} className="overflow-hidden rounded-lg border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setExpandedGameId(expanded ? null : match.gameId)}
+                    className="flex w-full items-center justify-between gap-2 bg-slate-800/60 px-3 py-2 text-left text-xs hover:bg-slate-800"
+                  >
+                    <span className="text-slate-300">
+                      {new Date(match.playedAt).toLocaleDateString('ko-KR')} · {match.mode}인 ·{' '}
+                      {match.mySeat}번 {myCharacter.name}
+                    </span>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        match.isWinner ? 'bg-yellow-500/20 text-yellow-300' : 'bg-slate-700 text-slate-400'
+                      }`}
+                    >
+                      {match.isWinner ? '승리' : '패배'}
+                    </span>
+                  </button>
+                  {expanded && (
+                    <ul className="space-y-1 px-3 py-2">
+                      {match.players.map((p) => {
+                        const character = CHARACTER_BY_ID[p.characterId];
+                        return (
+                          <li
+                            key={p.seat}
+                            className="flex items-center justify-between text-[11px] text-slate-300"
+                          >
+                            <span>
+                              {p.seat}번 {p.nickname} — {character.name}
+                              <span className="ml-1 text-slate-500">
+                                ({FACTION_META[character.faction].label})
+                              </span>
+                            </span>
+                            <span className={p.isWinner ? 'text-yellow-300' : 'text-slate-500'}>
+                              {p.isWinner ? '승리' : '패배'}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

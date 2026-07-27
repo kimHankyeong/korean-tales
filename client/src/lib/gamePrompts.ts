@@ -95,10 +95,6 @@ export function resolveActivePrompt(
             buildAction: (targetId) => ({ type: 'VOTE', voterId: myId, targetId }),
           };
 
-    // 13번 재배치: 자청비 꽃 선택은 밤(악 투표 이후)으로 이동 — 그 밤의 실제 사망 결과를 보고 고른다
-    case 'night.flowerDecision':
-      return myRole?.characterId === 'jacheongbi' ? { kind: 'FLOWER' } : null;
-
     case 'day.personalSpeech':
       return state.currentSpeakerId === myId ? { kind: 'SKIP' } : null;
 
@@ -128,6 +124,7 @@ export function resolveActivePrompt(
     case 'day.finalPlea':
       return state.executionTargetId === myId ? { kind: 'SKIP' } : null;
 
+    // 해태·도깨비·자청비(부활꽃/멸망꽃) 동시 진행 — 자청비 타이밍 통합 피드백으로 이 창에 합류
     case 'night.goodSkills':
       if (myRole?.characterId === 'haetae') {
         return {
@@ -146,6 +143,7 @@ export function resolveActivePrompt(
           buildAction: (targetId) => ({ type: 'DOKKAEBI_PRANK', targetId }),
         };
       }
+      if (myRole?.characterId === 'jacheongbi') return { kind: 'FLOWER' };
       return null;
 
     case 'night.evilVote':

@@ -54,6 +54,7 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: `finalPlea:${context.day}`, seconds: TIMER_CONFIG.finalPlea };
 
   /* 밤 (2번 표) */
+  // 해태·도깨비·자청비 동시 진행(자청비 타이밍 통합 피드백으로 이 창에 합류)
   if (snapshot.matches({ night: 'goodSkills' }))
     return { key: `goodSkills:${context.day}`, seconds: TIMER_CONFIG.nightGoodSkillDecision };
   if (snapshot.matches({ night: 'evilDiscussion' }))
@@ -62,9 +63,6 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: `evilVote:${context.day}`, seconds: TIMER_CONFIG.vote };
   if (snapshot.matches({ night: 'evilSkills' }))
     return { key: `evilSkills:${context.day}`, seconds: TIMER_CONFIG.nightEvilIndividualSkill };
-  // 13번 피드백: 자청비 꽃 선택이 아침(day)에서 밤(night, 악 투표 이후)으로 이동
-  if (snapshot.matches({ night: 'flowerDecision' }))
-    return { key: `flower:${context.day}`, seconds: TIMER_CONFIG.morningFlowerDecision };
 
   /* 사망 확정 트리거 (2번 표: 각 10초) */
   if (snapshot.matches({ resolveDeaths: 'awaitGrudge' }))
@@ -126,6 +124,19 @@ export class GameSession {
   /** 현재 페이즈 타이머의 남은 시간(ms) — 재접속 클라이언트 동기화용 */
   remainingMs(): number {
     return this.timer.remainingMs(this.now());
+  }
+
+  /** 재접속한 플레이어에게 다시 보낼 현재 타이머 상태 — 타이머 없는 페이즈면 null (1번 피드백) */
+  currentTimerSync(): TimerSyncPayload | null {
+    if (!this.timer.isRunning) return null;
+    const spec = getTimerSpec(this.actor.getSnapshot());
+    if (!spec) return null;
+    return {
+      phaseKey: spec.key,
+      durationSeconds: spec.seconds,
+      endsAt: this.now() + this.remainingMs(),
+      serverNow: this.now(),
+    };
   }
 
   stop(): void {

@@ -7,7 +7,9 @@ import {
   type GameRolePayload,
   type PublicGameState,
   type SurrenderProgressPayload,
+  type VoteResultPayload,
 } from '@korean-tales/shared';
+import type { GameHistoryRecord } from '../history/service';
 import { Room, isValidSettings, type RoomEmitter } from './room';
 import { RoomManager } from './roomManager';
 
@@ -49,13 +51,13 @@ function fillRoom(room: Room, count = 8) {
 }
 
 /**
- * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체(선스킬→악토론→악투표→악개별) +
- * 자청비 꽃 선택(멸망꽃은 항상 가능해 매 새벽 뜸, 자동 패스)까지 통과시켜
- * 9인 모드 조언자 선출(또는 7인 모드 개인 발언) 직전 상태로 만든다.
+ * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체(악토론→악투표→악개별→선스킬(해태·도깨비·
+ * 자청비, 자청비 타이밍 통합 피드백)→새벽 자동 소진)까지 통과시켜 9인 모드 조언자 선출
+ * (또는 7인 모드 개인 발언) 직전 상태로 만든다.
  */
 function passNightZero(room: Room) {
   const session = room.session!;
-  for (let i = 0; i < 5; i++) session.send({ type: 'TIME_UP' });
+  for (let i = 0; i < 4; i++) session.send({ type: 'TIME_UP' });
 }
 
 /** 게임 중 방의 역할 배정 결과를 (개인 전송 기록에서) 수집 */
@@ -130,6 +132,22 @@ describe('방(로비) 시스템 (requirements 1번)', () => {
     fillRoom(room); // 9명 참
     expect(room.startGame('u1')).toBeNull();
     expect(room.kick('u1', 'u2')).toBe('ALREADY_IN_GAME');
+  });
+
+  it('좌석 번호는 입장 순서와 무관하게 무작위 배정된다 (8번 피드백)', () => {
+    const ids = ['u1', 'u2', 'u3', 'u4', 'u5', 'u6', 'u7', 'u8', 'u9'];
+    let sawNonIdentitySeat = false;
+    for (let seed = 1; seed <= 10; seed++) {
+      const { room, emitter } = makeRoom(seed);
+      fillRoom(room);
+      expect(room.startGame('u1')).toBeNull();
+      const roles = rolesOf(emitter, ids);
+      const isIdentity = ids.every((id, i) => roles[id]!.seat === i + 1);
+      if (!isIdentity) sawNonIdentitySeat = true;
+      // 좌석은 항상 1~9 각 1회씩 배정되는 순열이어야 한다
+      expect(new Set(ids.map((id) => roles[id]!.seat))).toEqual(new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]));
+    }
+    expect(sawNonIdentitySeat).toBe(true);
   });
 
   it('인원이 모드와 다르면 시작할 수 없다', () => {
@@ -331,6 +349,23 @@ describe('게임 시작 — 비밀 캐릭터 배정 (정보 은닉)', () => {
     expect(broadcastJson).not.toContain('characterId');
   });
 
+  it('악 진영에게만 팀원 id 목록(teammateIds)이 채워진다 (3번 피드백 — 서로 알아보기)', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+    const evilIds = ids.filter((id) => roles[id]!.faction === 'EVIL');
+    const nonEvilIds = ids.filter((id) => roles[id]!.faction !== 'EVIL');
+
+    for (const id of evilIds) {
+      expect(new Set(roles[id]!.teammateIds)).toEqual(new Set(evilIds.filter((e) => e !== id)));
+    }
+    for (const id of nonEvilIds) {
+      expect(roles[id]!.teammateIds).toEqual([]);
+    }
+  });
+
   it('진영 선호: 슬롯이 남으면 반영된다 (보장은 아님)', () => {
     const { room, emitter } = makeRoom();
     fillRoom(room);
@@ -377,6 +412,35 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     return { roles, ids };
   }
 
+  it('낮 처형 투표가 끝나면 투표 내역이 game:voteResult로 방 전체에 3초간 공개된다 (9번 피드백)', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const session = room.session!;
+    passNightZero(room);
+    session.send({ type: 'TIME_UP' }); // 선출 스킵
+    while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
+    session.send({ type: 'TIME_UP' }); // 토론 → 투표
+    for (const id of ids) {
+      session.send({ type: 'VOTE', voterId: id, targetId: id === 'u1' ? 'ABSTAIN' : 'u1' });
+    }
+    session.send({ type: 'TIME_UP' }); // 투표 종료 → 최후의 변론
+
+    const results = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameVoteResult);
+    expect(results).toHaveLength(1);
+    const payload = results[0]!.payload as VoteResultPayload;
+    expect(payload.durationMs).toBe(3000);
+    expect(payload.votes.u1).toBe('ABSTAIN');
+    for (const id of ids.filter((i) => i !== 'u1')) expect(payload.votes[id]).toBe('u1');
+
+    // 공개 상태(game:state)에는 투표 내역이 절대 포함되지 않는다 — 별도 이벤트로만 공개
+    const stateJson = JSON.stringify(
+      emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameState),
+    );
+    expect(stateJson).not.toContain('ABSTAIN');
+  });
+
   it('해태 조사 결과는 해태 본인에게만 전송된다', () => {
     const { room, emitter } = makeRoom();
     const { roles, ids } = startAndGoNight(room, emitter);
@@ -409,9 +473,9 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     session.send({ type: 'TIME_UP' }); // evilDiscussion → evilVote
     session.send({ type: 'TIME_UP' }); // (무투표) → evilSkills
     room.handleAction(jeoseungId, { type: 'JEOSEUNG_COMPANION', targetId: companionId });
-    session.send({ type: 'TIME_UP' }); // evilSkills → goodSkills
-    session.send({ type: 'TIME_UP' }); // → dawn → flowerDecision (멸망꽃은 항상 가능)
-    room.handleAction(jacheongbiId, { type: 'FLOWER_PASS' });
+    session.send({ type: 'TIME_UP' }); // evilSkills → goodSkills (멸망꽃은 킬 대상과 무관하게 항상 가능)
+    room.handleAction(jacheongbiId, { type: 'FLOWER_PASS' }); // 자청비 패스
+    session.send({ type: 'TIME_UP' }); // goodSkills → dawn → (자동) → 낮 개인 발언
     while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
     session.send({ type: 'TIME_UP' }); // 토론 → 투표
     for (const id of ids) {
@@ -496,6 +560,53 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     // 재시작(다시하기) 대비: 자동 비공개 전환 + 전원 준비 초기화 (낯선 사람 유입 방지)
     expect(room.isPublic).toBe(false);
     expect(room.players.every((p) => !p.ready)).toBe(true);
+  });
+
+  it('게임 종료 시 로그인 유저 참가자만 onGameOver 콜백으로 전달된다 (2번 항목 — 전적 기록)', () => {
+    const emitter = new FakeEmitter();
+    const records: GameHistoryRecord[] = [];
+    const room = new Room(
+      'HIST01',
+      { id: 'u1', name: '방장', accountId: 'acct-1' },
+      emitter,
+      seededRng(1),
+      Date.now,
+      (record) => records.push(record),
+    );
+    // u2는 로그인 유저, 나머지(u3~u9)는 게스트(accountId 없음)
+    room.join({ id: 'u2', name: '유저2', accountId: 'acct-2' });
+    for (let i = 3; i <= 9; i++) room.join({ id: `u${i}`, name: `유저${i}` });
+
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+
+    room.session!.send({ type: 'TEAM_SURRENDER', faction: 'GOOD' }); // 즉시 게임 종료(악 승리)
+
+    expect(records).toHaveLength(1);
+    const record = records[0]!;
+    expect(record.mode).toBe(9);
+    expect(record.winner).toBe('EVIL');
+    // 로그인 유저(u1·u2) 2명만 기록되고, 게스트는 제외된다
+    expect(record.participants).toHaveLength(2);
+
+    // 실제 발표된 GameOverPayload(역할 전체 공개)와 승패 귀속이 일치하는지 대조
+    const over = emitter.roomEvents.find((e) => e.event === SOCKET_EVENTS.gameOver)!
+      .payload as GameOverPayload;
+    const roleOf = (id: string) => over.roles.find((r) => r.playerId === id)!;
+    const byAccount = new Map(record.participants.map((p) => [p.accountId, p]));
+    expect(byAccount.get('acct-1')).toMatchObject({
+      seat: roles['u1']!.seat,
+      characterId: roles['u1']!.characterId,
+      faction: roles['u1']!.faction,
+      isWinner: roleOf('u1').isWinner,
+    });
+    expect(byAccount.get('acct-2')).toMatchObject({
+      seat: roles['u2']!.seat,
+      characterId: roles['u2']!.characterId,
+      faction: roles['u2']!.faction,
+      isWinner: roleOf('u2').isWinner,
+    });
   });
 
   it('30초 내 전원 동의 실패 시 투항이 취소되고 게임은 계속된다', () => {

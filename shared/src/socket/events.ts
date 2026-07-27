@@ -60,6 +60,8 @@ export const SOCKET_EVENTS = {
   gameOver: 'game:over',
   /** S→방 전체: 화면 중앙 4초 발표 문구 (길동무 동반 사망·유서 대상 지목 등 공개 순간) */
   gameAnnouncement: 'game:announcement',
+  /** S→방 전체: 낮 처형 투표(또는 재투표) 종료 직후 3초간 누가 누구에게 투표했는지 공개 (9번 피드백) */
+  gameVoteResult: 'game:voteResult',
   /** C→S (ack, 관리자 전용): 가상 플레이어 대신 액션 제출 { playerId, action } */
   adminPuppetAction: 'admin:puppetAction',
   /** S→관리자 본인만: 가상 플레이어 포함 전원의 캐릭터 배정 (테스트용 전지적 시점) */
@@ -134,6 +136,12 @@ export interface GameRolePayload {
   characterId: CharacterId;
   faction: Faction;
   seat: number;
+  /**
+   * 악 진영 본인에게만 채워지는, 같은 진영 팀원 id 목록(본인 제외, 게임 시작 시점 고정) —
+   * 악 진영끼리 서로 알아볼 수 있도록 닉네임을 빨갛게 표시하는 데 쓴다(3번 피드백).
+   * 선/중립에게는 항상 빈 배열.
+   */
+  teammateIds: string[];
 }
 
 export interface PublicPlayerState {
@@ -205,6 +213,18 @@ export interface GameOverPayload {
 export interface AnnouncementPayload {
   text: string;
   /** 화면 중앙 표시 시간(ms) — 없으면 클라이언트 기본값(4000ms) 사용 */
+  durationMs?: number;
+}
+
+/**
+ * 낮 처형 투표(또는 재투표) 종료 직후 공개되는 투표 내역 — 평소 PublicGameState는 투표
+ * 내역을 포함하지 않지만(정보 은닉), 투표가 "끝난 결과"는 낮에 전원 공개되는 정보이므로
+ * 이 이벤트로만 별도 전송한다(9번 피드백). 밤 악 진영 킬 투표는 대상이 아니다.
+ */
+export interface VoteResultPayload {
+  /** voterId → targetId ('ABSTAIN' 포함) */
+  votes: Record<string, string>;
+  /** 화면에 화살표를 표시할 시간(ms) — 없으면 클라이언트 기본값(3000ms) 사용 */
   durationMs?: number;
 }
 

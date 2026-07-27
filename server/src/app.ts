@@ -7,6 +7,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import { registerAuthRoutes } from './auth/routes';
 import type { AuthService } from './auth/service';
+import type { HistoryService } from './history/service';
 import { registerProfileRoutes } from './profile/routes';
 
 /**
@@ -22,6 +23,8 @@ export function corsOrigin(): string[] | true {
 export interface CreateAppOptions {
   /** 아바타 업로드 저장 경로 — 기본 UPLOADS_DIR 환경변수 또는 ./uploads */
   uploadsDir?: string;
+  /** 지정하면 GET /profile/history(최근 전적, 2번 항목)가 활성화된다 */
+  history?: HistoryService;
 }
 
 export async function createApp(
@@ -35,7 +38,7 @@ export async function createApp(
   await app.register(cors, { origin: corsOrigin() });
 
   registerAuthRoutes(app, auth);
-  registerProfileRoutes(app, auth, { uploadsDir });
+  registerProfileRoutes(app, auth, { uploadsDir, history: options.history });
 
   // Render 헬스체크 경로 (render.yaml healthCheckPath)
   app.get('/health', async () => ({ ok: true }));

@@ -16,6 +16,8 @@ import { PhaseBadge } from './PhaseBadge';
 export interface ChatMessageView {
   id: string;
   kind: 'CHAT' | 'SYSTEM';
+  /** 발신자 id — 악 진영 팀원 강조 표시(teammateIds)에 사용 */
+  senderId?: string;
   senderName?: string;
   /** 발신자 배정 번호 — 채팅에 "n번.닉네임" 형태로 함께 표시 */
   senderSeat?: number;
@@ -45,6 +47,8 @@ export interface ChatWindowProps {
   channel?: 'PUBLIC' | 'EVIL';
   /** 서버 타이머 동기화 값 — 없으면 카운트다운 미표시 */
   timer?: CountdownTarget | null;
+  /** 악 진영 본인에게만 채워지는 팀원 id 목록 — 채팅에서도 닉네임을 빨갛게 강조한다(3번 피드백) */
+  teammateIds?: string[];
   onSend: (text: string) => void;
 }
 
@@ -58,6 +62,7 @@ export function ChatWindow({
   lockedReason,
   channel = 'PUBLIC',
   timer = null,
+  teammateIds,
   onSend,
 }: ChatWindowProps) {
   const [draft, setDraft] = useState('');
@@ -127,7 +132,11 @@ export function ChatWindow({
             <p key={m.id} className="flex items-start gap-1.5 text-sm leading-snug">
               <Avatar name={m.senderName ?? '?'} url={m.senderAvatarUrl} size={20} />
               <span>
-                <span className="mr-1.5 font-semibold text-sky-300">
+                <span
+                  className={`mr-1.5 font-semibold ${
+                    m.senderId && teammateIds?.includes(m.senderId) ? 'text-red-400' : 'text-sky-300'
+                  }`}
+                >
                   {m.senderSeat != null ? `${m.senderSeat}번.${m.senderName}` : m.senderName}
                 </span>
                 <span className="text-slate-100">{m.text}</span>

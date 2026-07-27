@@ -8,13 +8,16 @@ import { CHARACTER_BY_ID, FACTION_META, SOCKET_EVENTS, type ClientGameAction } f
 import * as api from '../lib/api';
 import { resolveActivePrompt } from '../lib/gamePrompts';
 import { emitWithAck, getSocket } from '../lib/socket';
+import { playSfx } from '../lib/sfx';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
 import { AdminPuppetPanel } from './AdminPuppetPanel';
 import { AnnouncementToast } from './AnnouncementToast';
+import { VoteResultOverlay } from './VoteResultOverlay';
 import { ChatWindow } from './ChatWindow';
 import { GameOverScreen } from './GameOverScreen';
+import { MemoPanel } from './MemoPanel';
 import { MyPage } from './MyPage';
 import { PlayerListPanel } from './PlayerListPanel';
 import { SelectionPanel, type SelectionTarget } from './SelectionPanel';
@@ -22,7 +25,18 @@ import { ServerWakeNotice } from './ServerWakeNotice';
 import { SkillBookModal } from './SkillBookModal';
 import { SoundSettingsModal } from './SoundSettingsModal';
 
+/** 스킬 사용으로 취급해 효과음을 재생하는 액션(10번 피드백) — 투표·발언류는 제외 */
+const SKILL_ACTION_TYPES = new Set<ClientGameAction['type']>([
+  'HAETAE_INVESTIGATE',
+  'DOKKAEBI_PRANK',
+  'JEOSEUNG_COMPANION',
+  'GUMIHO_SEDUCE',
+  'FLOWER_REVIVE',
+  'FLOWER_DOOM',
+]);
+
 function sendAction(action: ClientGameAction) {
+  if (SKILL_ACTION_TYPES.has(action.type)) playSfx('SKILL');
   void emitWithAck(SOCKET_EVENTS.gameAction, action);
 }
 
@@ -88,19 +102,24 @@ export function GameScreen() {
   const prompt = store.publicState
     ? resolveActivePrompt(store.publicState, store.role, store.myId, store.timer?.label ?? null)
     : null;
-  // 13번 재배치: 자청비 꽃 선택(조언자 발언 방향 결정 겸용)이 밤으로 이동
+  // 조언자 발언 방향 결정은 자청비 꽃 선택과 같은 창(night.goodSkills)에서 이뤄진다
   const advisorDirectionActive =
-    store.publicState?.phase === 'night.flowerDecision' && store.publicState.advisorId === store.myId;
+    store.publicState?.phase === 'night.goodSkills' && store.publicState.advisorId === store.myId;
 
   // 밤에는 전체 공개 채팅이 없다 — 악 진영은 전용 채널로, 그 외는 채팅창 자체를 잠근다 (3번·4번 섹션)
   const isNight = store.phase === 'NIGHT';
   const isEvil = store.role?.faction === 'EVIL';
   const chatLocked = isNight && !isEvil;
 
+  function sendChatText(text: string) {
+    void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text });
+  }
+
   return (
     <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-y-hidden max-md:landscape:overflow-x-auto md:flex-row md:overflow-x-hidden">
       <ServerWakeNotice />
       <AnnouncementToast />
+      <VoteResultOverlay />
 
       <div className="fixed right-4 top-4 z-50 flex gap-1.5">
         <button
@@ -118,6 +137,7 @@ export function GameScreen() {
         >
           🔊
         </button>
+        <MemoPanel onSendLine={sendChatText} />
       </div>
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
       {showSound && <SoundSettingsModal onClose={() => setShowSound(false)} />}
@@ -133,13 +153,17 @@ export function GameScreen() {
           lockedReason="밤에는 채팅할 수 없어요 (악 진영은 전용 채널로 대화해요)"
           channel={isNight && isEvil ? 'EVIL' : 'PUBLIC'}
           timer={store.timer}
-          onSend={(text) =>
-            void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text })
-          }
+          teammateIds={store.role?.teammateIds}
+          onSend={sendChatText}
         />
       </div>
 
-      <PlayerListPanel players={store.players} myId={store.myId} advisorId={store.publicState?.advisorId} />
+      <PlayerListPanel
+        players={store.players}
+        myId={store.myId}
+        advisorId={store.publicState?.advisorId}
+        teammateIds={store.role?.teammateIds}
+      />
 
       <AdminPuppetPanel
         roster={store.adminRoster}
@@ -335,6 +359,7 @@ export function GameScreen() {
             const result = await api.updatePassword(currentPassword, newPassword);
             return result.ok ? null : result.error;
           }}
+          onFetchMatchHistory={api.fetchMatchHistory}
           onClose={() => setShowMyPage(false)}
         />
       )}

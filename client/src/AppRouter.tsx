@@ -72,6 +72,7 @@ export function AppRouter() {
       applyAdminRoster,
       addSystemMessage,
       setAnnouncement,
+      applyVoteResult,
     } = useGameStore.getState();
 
     // 해태 본인에게만 오는 투사 결과 — "n번은 악 진영입니다/아닙니다" 형식으로 화면
@@ -100,6 +101,7 @@ export function AppRouter() {
     socket.on(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
     socket.on(SOCKET_EVENTS.adminRoster, applyAdminRoster);
     socket.on(SOCKET_EVENTS.gameAnnouncement, onAnnouncement);
+    socket.on(SOCKET_EVENTS.gameVoteResult, applyVoteResult);
 
     return () => {
       socket.off(SOCKET_EVENTS.roomState, onRoomState);
@@ -116,6 +118,7 @@ export function AppRouter() {
       socket.off(SOCKET_EVENTS.gameFlowerOptions, applyFlowerOptions);
       socket.off(SOCKET_EVENTS.adminRoster, applyAdminRoster);
       socket.off(SOCKET_EVENTS.gameAnnouncement, onAnnouncement);
+      socket.off(SOCKET_EVENTS.gameVoteResult, applyVoteResult);
     };
   }, [status, applyRoomState, signOut, leaveRoom]);
 

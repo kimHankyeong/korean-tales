@@ -26,6 +26,12 @@ export const DEFAULT_ROOM_TIMER_SETTINGS: RoomTimerSettings = {
   discussionSeconds: ROOM_OPTIONS.discussionSeconds[0],
 };
 
+/**
+ * 대기방(로비)에서 로그인 유저의 소켓이 끊긴 뒤 실제로 방에서 제거되기까지의 유예 시간(초) —
+ * 1번 섹션 "새로고침·재접속 복구". 이 안에 재접속하면 그대로 유지된다.
+ */
+export const RECONNECT_GRACE_SECONDS = 30;
+
 /** 서버 사이드 타이머(초) — 2번 섹션 표 */
 export const TIMER_CONFIG = {
   /** 밤: 악 진영 스킬 사용 결정 (2번 섹션 표 — 10초로 확정됨) */
@@ -34,7 +40,7 @@ export const TIMER_CONFIG = {
   nightEvilIndividualSkill: 10,
   /** 밤: 악 진영 토론 */
   nightEvilDiscussion: 90,
-  /** 밤: 선 진영 전체 스킬 결정 (해태 등) */
+  /** 밤: 선 진영 전체 스킬 결정 (해태·도깨비·자청비 부활꽃/멸망꽃 — 4번 섹션, 동시 진행) */
   nightGoodSkillDecision: 10,
   /** 밤: 도깨비 스킬 결정 */
   nightDokkaebiDecision: 10,
@@ -42,8 +48,6 @@ export const TIMER_CONFIG = {
   vote: 10,
   /** 낮 투표 확정 직후: 최후의 변론 (처형 대상자 채팅) */
   finalPlea: 20,
-  /** 아침 직후: 자청비 부활꽃/멸망꽃 사용 결정 */
-  morningFlowerDecision: 10,
   /** 사망 확정 시: 장화홍련 피 맺힌 유서 대상 선택 */
   deathJanghwaDecision: 10,
   /** 사망 확정 시: 조언자 방울 승계/파기 선택 */

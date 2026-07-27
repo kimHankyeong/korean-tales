@@ -259,28 +259,42 @@ export function investigate(target: GamePlayer): InvestigationResult {
 
 export interface NightKillResolution {
   killedPlayerId: string | null;
-  /** 아침 전체 공지 — 보호 성공이든 킬 없음이든 동일하게 NO_DEATH("사망자 없음") */
+  /** 아침 전체 공지 — 보호/부활 성공이든 킬 없음이든 동일하게 NO_DEATH("사망자 없음") */
   announcement: 'DEATH' | 'NO_DEATH';
   /** 도깨비 보호가 이번 판정에서 실제로 킬을 막았는지 — 성공하면 스킬이 영구 소모된다 */
   protectionSucceeded: boolean;
+  /**
+   * 자청비 부활꽃이 이번 판정에서 실제로 킬을 막았는지 — 성공하면 스킬이 영구 소모된다.
+   * 도깨비 보호와 같은 대상에 동시에 성공할 수 있다(자청비 타이밍 통합 피드백) — 이 경우 둘 다 true
+   */
+  revivalSucceeded: boolean;
 }
 
-/** 1) 밤 킬 판정 — 도깨비가 지정한 보호 대상이 킬 대상과 같으면 보호 성공(킬 무효) */
+/**
+ * 1) 밤 킬 판정 — 도깨비 보호 대상 또는 자청비 부활꽃 대상이 킬 대상과 같으면 킬 무효.
+ * 자청비는 도깨비의 보호 여부를 모른 채(같은 goodSkills 창에서) 부활꽃 대상을 고르므로
+ * 두 조건이 같은 대상에 동시에 맞아떨어질 수 있다 — 이때는 둘 다 소모 처리한다.
+ */
 export function resolveNightKillOutcome(
   players: readonly GamePlayer[],
   nightKillTargetId: string | null,
   protectTargetId: string | null,
+  reviveTargetId: string | null = null,
 ): NightKillResolution {
   if (nightKillTargetId === null) {
-    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false };
+    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false, revivalSucceeded: false };
   }
   const target = getPlayer(players, nightKillTargetId);
-  if (!target?.alive) return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false };
-  // 보호 성공 — 악 진영에게 따로 알리지 않으며, 공지는 킬 없음과 구분 불가
-  if (protectTargetId !== null && protectTargetId === nightKillTargetId) {
-    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: true };
+  if (!target?.alive) {
+    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded: false, revivalSucceeded: false };
   }
-  return { killedPlayerId: target.id, announcement: 'DEATH', protectionSucceeded: false };
+  const protectionSucceeded = protectTargetId !== null && protectTargetId === nightKillTargetId;
+  const revivalSucceeded = reviveTargetId !== null && reviveTargetId === nightKillTargetId;
+  // 보호·부활 성공 — 악 진영에게 따로 알리지 않으며, 공지는 킬 없음과 구분 불가
+  if (protectionSucceeded || revivalSucceeded) {
+    return { killedPlayerId: null, announcement: 'NO_DEATH', protectionSucceeded, revivalSucceeded };
+  }
+  return { killedPlayerId: target.id, announcement: 'DEATH', protectionSucceeded: false, revivalSucceeded: false };
 }
 
 /** 4) 멸망꽃 사망 → 동귀어진류(피 맺힌 유서) 봉인 판정 — sealedByDeathCauses 기반 */
@@ -462,24 +476,26 @@ export interface DawnResult {
   players: GamePlayer[];
   pendingDeaths: PendingDeath[];
   scheduledRevivals: string[];
-  /**
-   * 도깨비 장난이 그날 밤 킬을 막아 살아남은 대상 — 자청비가 이 대상에게 부활꽃을 써도
-   * "쓴 것으로" 처리(둘 다 소모)할 수 있도록 다음 아침 꽃 단계까지 넘겨준다.
-   */
+  /** 도깨비 장난이 그날 밤 킬을 실제로 막았는지 — 성공한 경우 그 대상 id, 아니면 null */
   protectedTargetId: string | null;
+  /** 자청비 부활꽃이 그날 밤 킬을 실제로 막았는지 — 성공한 경우 그 대상 id, 아니면 null */
+  revivedTargetId: string | null;
 }
 
 /**
  * 새벽에 수행되는 일괄 처리:
  * 1) 연민 예약 부활 — 부활한 까치선비는 진영이 NEUTRAL로 전환 (convertsToFactionOnRevive)
- * 2) 밤 킬 판정 — 도깨비 보호 대상이 킬 대상과 같으면 무효("사망자 없음") + 도깨비 장난 영구 소모,
- *    아니면 즉시 사망 반영. 단 사망 트리거는 자청비 꽃 단계 이후에 처리하므로 pendingDeaths에 applied 상태로 적재.
+ * 2) 밤 킬 판정 — 도깨비 보호 또는 자청비 부활꽃(둘 다 goodSkills 시간에 서로의 결과를 모른 채
+ *    미리 정해둔 것)이 킬 대상과 같으면 무효("사망자 없음") + 성공한 쪽 스킬 영구 소모(둘 다
+ *    성공했으면 둘 다 소모). 아니면 즉시 사망 반영. 단 사망 트리거는 이후 resolveDeaths에서
+ *    처리하므로 pendingDeaths에 applied 상태로 적재.
  */
 export function processDawn(input: {
   players: GamePlayer[];
   scheduledRevivals: string[];
   nightKillTargetId: string | null;
   dokkaebiProtectTargetId: string | null;
+  reviveTargetId: string | null;
 }): DawnResult {
   let players = input.players.map((p) => ({ ...p, skillUses: { ...p.skillUses } }));
 
@@ -494,9 +510,14 @@ export function processDawn(input: {
     });
   }
 
-  // 2) 밤 킬 판정 — 도깨비 보호가 성공했으면 무효 ("사망자 없음", 차단 사실 비공개) + 스킬 영구 소모
+  // 2) 밤 킬 판정 — 도깨비 보호 또는 자청비 부활꽃이 성공했으면 무효 ("사망자 없음") + 스킬 영구 소모
   const pendingDeaths: PendingDeath[] = [];
-  const killOutcome = resolveNightKillOutcome(players, input.nightKillTargetId, input.dokkaebiProtectTargetId);
+  const killOutcome = resolveNightKillOutcome(
+    players,
+    input.nightKillTargetId,
+    input.dokkaebiProtectTargetId,
+    input.reviveTargetId,
+  );
   if (killOutcome.killedPlayerId !== null) {
     players = players.map((p) =>
       p.id === killOutcome.killedPlayerId ? { ...p, alive: false } : p,
@@ -507,23 +528,17 @@ export function processDawn(input: {
     const dokkaebi = players.find((p) => p.characterId === 'dokkaebi');
     if (dokkaebi) players = markSkillUsed(players, dokkaebi.id, 'prank');
   }
+  if (killOutcome.revivalSucceeded) {
+    const jacheongbi = players.find((p) => p.characterId === 'jacheongbi');
+    if (jacheongbi) players = markSkillUsed(players, jacheongbi.id, 'revival-flower');
+  }
 
   return {
     players,
     pendingDeaths,
     scheduledRevivals: [],
     protectedTargetId: killOutcome.protectionSucceeded ? input.nightKillTargetId : null,
+    revivedTargetId: killOutcome.revivalSucceeded ? input.nightKillTargetId : null,
   };
 }
 
-/* ── 부활꽃 대상 판정 (requirements 5-1항) ─────────── */
-
-/**
- * 부활꽃 대상: "그날 밤 악 진영 킬로 사망한 사람"만.
- * 동반 사망자(저승길 동무·피 맺힌 유서)·투표 처형자는 대상이 아니다 — cause로 판별.
- */
-export function isRevivableTonight(pendingDeaths: readonly PendingDeath[], targetId: string): boolean {
-  return pendingDeaths.some(
-    (d) => d.playerId === targetId && d.cause === 'EVIL_NIGHT_KILL' && d.applied,
-  );
-}

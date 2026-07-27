@@ -24,11 +24,11 @@ function snapshotOf() {
 }
 
 /**
- * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체 + 자청비 꽃 선택(멸망꽃은 항상 가능해
- * 매 새벽 뜸, 자동 패스)까지 통과시켜 조언자 선출 직전 상태로 만든다.
+ * 게임은 항상 밤(밤 0)부터 시작한다 — 밤 전체(악토론→악투표→악개별→선스킬(해태·도깨비·
+ * 자청비)→새벽 자동 소진)까지 통과시켜 조언자 선출 직전 상태로 만든다.
  */
 function passNightZero(actor: ReturnType<typeof createActor<typeof gameMachine>>) {
-  for (let i = 0; i < 5; i++) actor.send({ type: 'TIME_UP' });
+  for (let i = 0; i < 4; i++) actor.send({ type: 'TIME_UP' });
 }
 
 describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', () => {

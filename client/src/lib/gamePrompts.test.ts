@@ -29,7 +29,7 @@ function baseState(overrides: Partial<PublicGameState> = {}): PublicGameState {
   };
 }
 
-const haetaeRole: GameRolePayload = { characterId: 'haetae', faction: 'GOOD', seat: 1 };
+const haetaeRole: GameRolePayload = { characterId: 'haetae', faction: 'GOOD', seat: 1, teammateIds: [] };
 
 describe('resolveActivePrompt — 사망자는 관전만 가능 (13번 버그 수정)', () => {
   it('생존자는 낮 투표 프롬프트를 받는다', () => {

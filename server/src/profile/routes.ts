@@ -14,6 +14,7 @@ import path from 'node:path';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { AuthService, AuthUser } from '../auth/service';
 import { bearerToken } from '../auth/routes';
+import type { HistoryService } from '../history/service';
 import {
   AVATAR_CONTENT_TYPES,
   AVATAR_MIME_TYPES,
@@ -30,6 +31,8 @@ async function currentUser(request: FastifyRequest, auth: AuthService): Promise<
 
 export interface ProfileRoutesOptions {
   uploadsDir: string;
+  /** 지정하면 GET /profile/history(최근 전적)가 활성화된다 */
+  history?: HistoryService;
 }
 
 export function registerProfileRoutes(
@@ -53,6 +56,15 @@ export function registerProfileRoutes(
     const result = await auth.updateNickname(user.id, String(request.body?.nickname ?? ''));
     if (!result.ok) return reply.status(400).send({ error: result.error });
     return reply.send({ user: result.user });
+  });
+
+  /* 최근 전적 (2번 항목) — 최신 판부터 최대 3개, 좌석·직업·닉네임·승패 포함 */
+  app.get('/profile/history', async (request, reply) => {
+    const user = await currentUser(request, auth);
+    if (!user) return reply.status(401).send({ error: 'UNAUTHORIZED' });
+    if (!options.history) return reply.send({ matches: [] });
+    const matches = await options.history.getRecentMatches(user.id, 3);
+    return reply.send({ matches });
   });
 
   /* 비밀번호 변경 */

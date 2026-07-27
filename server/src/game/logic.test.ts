@@ -9,7 +9,6 @@ import {
   computeSpeechOrder,
   investigate,
   isCompanionSealed,
-  isRevivableTonight,
   isTakeAlongSealed,
   processDawn,
   processDeathQueue,
@@ -149,10 +148,27 @@ describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
       killedPlayerId: null,
       announcement: 'NO_DEATH',
       protectionSucceeded: true,
+      revivalSucceeded: false,
     });
     // 악 진영이 공지(킬 대상 여부·announcement)로 차단 여부를 구분할 수 없어야 함
     expect(protectedOutcome.killedPlayerId).toBe(noKill.killedPlayerId);
     expect(protectedOutcome.announcement).toBe(noKill.announcement);
+  });
+
+  it('자청비 부활꽃 성공: 밤 킬 무효 — 도깨비 보호와 같은 대상에 겹치면 둘 다 성공으로 기록된다', () => {
+    const players = makePlayers();
+    expect(resolveNightKillOutcome(players, 'p5', null, 'p5')).toEqual({
+      killedPlayerId: null,
+      announcement: 'NO_DEATH',
+      protectionSucceeded: false,
+      revivalSucceeded: true,
+    });
+    expect(resolveNightKillOutcome(players, 'p5', 'p5', 'p5')).toEqual({
+      killedPlayerId: null,
+      announcement: 'NO_DEATH',
+      protectionSucceeded: true,
+      revivalSucceeded: true,
+    });
   });
 
   it('보호 대상이 킬 대상과 다르면(또는 미지정이면) 밤 킬은 정상 반영되고 보호는 실패로 기록된다', () => {
@@ -160,23 +176,14 @@ describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
       killedPlayerId: 'p5',
       announcement: 'DEATH',
       protectionSucceeded: false,
+      revivalSucceeded: false,
     });
     expect(resolveNightKillOutcome(makePlayers(), 'p5', 'p6')).toEqual({
       killedPlayerId: 'p5',
       announcement: 'DEATH',
       protectionSucceeded: false,
+      revivalSucceeded: false,
     });
-  });
-
-  it('부활꽃 대상: 그날 밤 악 킬 사망자만 — 동반사망자·처형자·유서 사망자는 제외', () => {
-    const deaths = (cause: PendingDeath['cause']): PendingDeath[] => [
-      { playerId: 'x', cause, applied: true },
-    ];
-    expect(isRevivableTonight(deaths('EVIL_NIGHT_KILL'), 'x')).toBe(true);
-    expect(isRevivableTonight(deaths('COMPANION_DEATH'), 'x')).toBe(false); // 저승길 동무 동반
-    expect(isRevivableTonight(deaths('TAKE_ALONG'), 'x')).toBe(false); // 피 맺힌 유서 동반
-    expect(isRevivableTonight(deaths('DAY_EXECUTION'), 'x')).toBe(false); // 낮 투표 처형자
-    expect(isRevivableTonight(deaths('DOOM_FLOWER'), 'x')).toBe(false); // 멸망꽃
   });
 
   it('연민: 까치선비 한정 — 바리공주 생존 시에만, 다른 캐릭터에는 적용 불가', () => {
@@ -192,17 +199,18 @@ describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
     expect(compassionApplies(players, { ...kkachi, skillUses: { gratitude: 1 } })).toBe(false);
   });
 
-  it('멸망꽃 사망 → 동귀어진류(피 맺힌 유서) 봉인, 그 외 원인은 봉인 없음', () => {
+  it('멸망꽃 사망 또는 저승사자 길동무로 동반 사망 → 동귀어진류(피 맺힌 유서) 봉인', () => {
     const janghwa = byChar(makePlayers(), 'janghwa');
     expect(isTakeAlongSealed(janghwa, 'DOOM_FLOWER')).toBe(true);
+    expect(isTakeAlongSealed(janghwa, 'COMPANION_DEATH')).toBe(true); // 저승사자 길동무로 끌려간 경우도 봉인
     expect(isTakeAlongSealed(janghwa, 'DAY_EXECUTION')).toBe(false);
-    expect(isTakeAlongSealed(janghwa, 'COMPANION_DEATH')).toBe(false); // 동반 사망은 봉인 아님
     expect(isTakeAlongSealed(byChar(makePlayers(), 'haetae'), 'DOOM_FLOWER')).toBe(false); // 스킬 미보유
   });
 
-  it('멸망꽃 사망 → 저승길 동무(길동무) 봉인, 그 외 원인은 봉인 없음', () => {
+  it('멸망꽃 사망 또는 장화홍련 유서로 동반 사망 → 저승길 동무(길동무) 봉인', () => {
     const jeoseung = byChar(makePlayers(), 'jeoseung');
     expect(isCompanionSealed(jeoseung, 'DOOM_FLOWER')).toBe(true);
+    expect(isCompanionSealed(jeoseung, 'TAKE_ALONG')).toBe(true); // 장화홍련 유서에 지목된 경우도 봉인
     expect(isCompanionSealed(jeoseung, 'DAY_EXECUTION')).toBe(false);
     expect(isCompanionSealed(jeoseung, 'EVIL_NIGHT_KILL')).toBe(false);
     expect(isCompanionSealed(byChar(makePlayers(), 'haetae'), 'DOOM_FLOWER')).toBe(false); // 스킬 미보유
@@ -232,33 +240,95 @@ describe('스킬 상호작용 판정 (requirements 3·4·5번)', () => {
     expect(triggers).toContain('COMPANION');
   });
 
-  it('도깨비 보호가 성공하면 processDawn이 protectedTargetId를 반환한다 (자청비 부활꽃 겸용 소모용)', () => {
+  it('저승사자가 장화홍련의 유서(TAKE_ALONG)로 동반 사망하면 자신의 길동무 동반 사망은 발동하지 않는다', () => {
+    const players = makePlayers();
+    const jeoseung = byChar(players, 'jeoseung');
+    const companion = byChar(players, 'haetae');
+    const triggers = computeDeathTriggers(
+      { players, advisorId: null, companionTargetId: companion.id },
+      jeoseung,
+      { playerId: jeoseung.id, cause: 'TAKE_ALONG', applied: true },
+    );
+    expect(triggers).not.toContain('COMPANION');
+  });
+
+  it('장화홍련이 저승사자의 길동무(COMPANION_DEATH)로 동반 사망하면 자신의 유서 스킬은 발동하지 않는다', () => {
+    const players = makePlayers();
+    const janghwa = byChar(players, 'janghwa');
+    const triggers = computeDeathTriggers(
+      makeDeathState(players),
+      janghwa,
+      { playerId: janghwa.id, cause: 'COMPANION_DEATH', applied: true },
+    );
+    expect(triggers).not.toContain('GRUDGE');
+  });
+
+  it('도깨비 보호가 성공하면 processDawn이 protectedTargetId를 반환하고 도깨비 스킬을 소모한다', () => {
     const result = processDawn({
       players: makePlayers(),
       scheduledRevivals: [],
       nightKillTargetId: 'p5',
       dokkaebiProtectTargetId: 'p5',
+      reviveTargetId: null,
     });
     expect(result.protectedTargetId).toBe('p5');
+    expect(result.revivedTargetId).toBeNull();
     expect(result.pendingDeaths).toEqual([]); // 보호 성공 — 사망 건 자체가 없음
+    const dokkaebi = result.players.find((p) => p.characterId === 'dokkaebi')!;
+    expect(dokkaebi.skillUses.prank).toBe(1);
   });
 
-  it('보호가 실패하거나 킬이 없으면 processDawn의 protectedTargetId는 null이다', () => {
+  it('자청비 부활꽃이 성공하면 processDawn이 revivedTargetId를 반환하고 부활꽃을 소모한다', () => {
+    const result = processDawn({
+      players: makePlayers(),
+      scheduledRevivals: [],
+      nightKillTargetId: 'p5',
+      dokkaebiProtectTargetId: null,
+      reviveTargetId: 'p5',
+    });
+    expect(result.protectedTargetId).toBeNull();
+    expect(result.revivedTargetId).toBe('p5');
+    expect(result.pendingDeaths).toEqual([]);
+    const jacheongbi = result.players.find((p) => p.characterId === 'jacheongbi')!;
+    expect(jacheongbi.skillUses['revival-flower']).toBe(1);
+  });
+
+  it('도깨비 보호와 자청비 부활꽃이 같은 대상에 겹치면 둘 다 소모된다', () => {
+    const result = processDawn({
+      players: makePlayers(),
+      scheduledRevivals: [],
+      nightKillTargetId: 'p5',
+      dokkaebiProtectTargetId: 'p5',
+      reviveTargetId: 'p5',
+    });
+    expect(result.protectedTargetId).toBe('p5');
+    expect(result.revivedTargetId).toBe('p5');
+    const dokkaebi = result.players.find((p) => p.characterId === 'dokkaebi')!;
+    const jacheongbi = result.players.find((p) => p.characterId === 'jacheongbi')!;
+    expect(dokkaebi.skillUses.prank).toBe(1);
+    expect(jacheongbi.skillUses['revival-flower']).toBe(1);
+  });
+
+  it('보호·부활이 모두 실패하거나 킬이 없으면 processDawn의 protectedTargetId/revivedTargetId는 null이다', () => {
     const killed = processDawn({
       players: makePlayers(),
       scheduledRevivals: [],
       nightKillTargetId: 'p5',
       dokkaebiProtectTargetId: null,
+      reviveTargetId: null,
     });
     expect(killed.protectedTargetId).toBeNull();
+    expect(killed.revivedTargetId).toBeNull();
 
     const noKill = processDawn({
       players: makePlayers(),
       scheduledRevivals: [],
       nightKillTargetId: null,
       dokkaebiProtectTargetId: null,
+      reviveTargetId: null,
     });
     expect(noKill.protectedTargetId).toBeNull();
+    expect(noKill.revivedTargetId).toBeNull();
   });
 });
 

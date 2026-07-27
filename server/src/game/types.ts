@@ -90,6 +90,12 @@ export interface GameContext {
   tieCandidates: string[];
   /** 최후의 변론 대상 (처형 확정자) */
   executionTargetId: string | null;
+  /**
+   * 가장 최근에 종료된 낮 처형 투표(또는 재투표)의 voterId→targetId 스냅샷 — 3초간 화살표로
+   * 공개하는 데 쓴다(9번 피드백). room.ts가 참조 동일성으로 "새 결과인지" 판별하므로 매번
+   * 새 객체로 대입한다. null이면 아직 종료된 투표가 없음
+   */
+  lastVoteResult: Record<string, string> | null;
 
   /* 밤 */
   evilVotes: Record<string, string>;
@@ -97,11 +103,18 @@ export interface GameContext {
   /** 도깨비가 그날 밤 지정한 보호 대상 — 밤마다 재지정, 새벽 처리 후 초기화 */
   dokkaebiProtectTargetId: string | null;
   /**
-   * 그날 밤 도깨비 장난으로 살아남은 대상 — 그 아침 자청비가 이 대상에게 부활꽃을
-   * 사용해도(실제로는 되살릴 필요가 없지만) 유효한 사용으로 인정해 소모 처리한다.
-   * 매 새벽 새로 계산되어 덮어써진다.
+   * 자청비가 goodSkills 시간에 지정한 부활꽃 대상(그날 밤 킬 대상만 후보) — 도깨비 보호 결과를
+   * 아직 모르는 채로 선택한다. 실제 반영·스킬 소모는 새벽(processDawn)에서 일괄 처리, 새벽 처리 후 초기화
    */
-  dokkaebiSavedTargetId: string | null;
+  reviveTargetId: string | null;
+  /** 자청비가 그날 밤 이미 멸망꽃을 사용했는지 — 같은 밤 부활꽃과 동시 사용 방지용 */
+  doomUsedTonight: boolean;
+  /**
+   * 이번 밤이 시작될 때(night.entry)의 생존 여부 스냅샷 — 밤 킬/동반 사망 등으로 그날 밤
+   * 확정된 사망은 아침(낮 시작)까지 공개 상태(PublicGameState.alive)에 노출되지 않도록
+   * publicState.ts가 이 스냅샷으로 마스킹하는 데 쓰인다(4-c 피드백: 사망 조기 노출 방지)
+   */
+  nightStartAlive: Record<string, boolean>;
   /** 구미호 유혹 — 다음날 낮 투표 스킵 */
   seduceNextDay: boolean;
   /** 저승사자가 지정해 둔 길동무 (재지정 시 갱신, 사망 시 소모) */

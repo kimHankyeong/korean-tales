@@ -19,13 +19,14 @@
  *   진입하고(firstMorningPending), 이후의 모든 밤은 평소처럼 낮 개인 발언으로 돌아간다.
  *   사망 발생 시 공통적으로 resolveDeaths 서브 상태를 경유한다.
  *
- * 밤(night) 내부 순서 — 13번 피드백으로 재배치됨:
- *   evilDiscussion(악 토론) → evilVote(악 처치 투표) → evilSkills(구미호·저승사자)
- *   → goodSkills(도깨비·해태, 악 투표 이후로 이동) → dawn(사망 판정 — 옛 day.dawn이 이리로 이동)
- *   → flowerDecision(자청비, 옛 day.flowerDecision이 이리로 이동 — 이제 그 밤의 실제 사망 결과를
- *     보고 고른다) → resolveDeaths → firstMorning 또는 day.personalSpeech.
- *   자청비의 부활꽃 대상은 이 밤에 도깨비 장난까지 반영해 확정된 pendingDeaths를 그대로 쓰므로
- *   추측(blind guess) 없이 기존과 동일한 "그날 밤 악 킬 사망자만" 로직을 재사용한다.
+ * 밤(night) 내부 순서 — 13번 피드백(악 진영 우선) + 자청비 타이밍 통합 피드백 반영:
+ *   evilDiscussion(악 토론) → evilVote(악 처치 투표 — 여기서 nightKillTargetId 확정)
+ *   → evilSkills(구미호·저승사자) → goodSkills(도깨비·해태·**자청비** 동시 진행)
+ *   → dawn(도깨비 보호 + 자청비 부활꽃을 한꺼번에 반영해 사망 판정) → resolveDeaths
+ *   → firstMorning 또는 day.personalSpeech.
+ *   자청비는 goodSkills 시점에 이미 확정된 nightKillTargetId(그날 밤 킬 대상)만을 부활꽃 후보로
+ *   고른다 — 이 시점엔 도깨비가 그 대상을 보호할지 아직 알 수 없으므로 도깨비 스킬과 "겹칠 수
+ *   있음"을 감수한 blind 선택이다(둘 다 같은 대상에 쓰이면 새벽 판정에서 둘 다 소모 처리).
  */
 
 import { and, assign, setup } from 'xstate';
@@ -38,7 +39,6 @@ import {
   computeSpeechOrder,
   getPlayer,
   investigate,
-  isRevivableTonight,
   markSkillUsed,
   pickRandom,
   processDawn,
@@ -136,34 +136,30 @@ export const gameMachine = setup({
       ),
 
     /* ── 낮 ── */
-    // 전이 조건: 자청비가 생존해 있고 사용할 수 있는 꽃이 하나라도 있음
-    flowerPhaseAvailable: ({ context }) => {
-      const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi');
-      if (!jacheongbi?.alive) return false;
-      const revivable =
-        canUseSkill(jacheongbi, 'revival-flower') &&
-        (context.pendingDeaths.some((d) => d.cause === 'EVIL_NIGHT_KILL' && d.applied) ||
-          context.dokkaebiSavedTargetId !== null);
-      const doomable = canUseSkill(jacheongbi, 'doom-flower');
-      return revivable || doomable;
-    },
-    // 부활꽃 유효성: 그날 밤 악 진영 킬 사망자, 또는 도깨비 장난으로 살아남은 대상(둘 다 소모 처리)
+    // 부활꽃 유효성: 그날 밤 악 진영의 킬 대상(nightKillTargetId)만 후보 — 도깨비 보호 여부는 새벽에
+    // 판정되므로 이 시점엔 알 수 없다. 같은 밤 멸망꽃을 이미 썼다면 중복 사용 불가
     validRevive: ({ context, event }) => {
       if (event.type !== 'FLOWER_REVIVE') return false;
       const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi');
       return (
         !!jacheongbi?.alive &&
         canUseSkill(jacheongbi, 'revival-flower') &&
-        (isRevivableTonight(context.pendingDeaths, event.targetId) ||
-          event.targetId === context.dokkaebiSavedTargetId)
+        !context.doomUsedTonight &&
+        context.nightKillTargetId !== null &&
+        event.targetId === context.nightKillTargetId
       );
     },
-    // 멸망꽃 유효성: 생존자 1인 지정 (같은 아침 상호 배타는 상태 전이로 보장됨)
+    // 멸망꽃 유효성: 생존자 1인 지정. 같은 밤 부활꽃을 이미 썼다면 중복 사용 불가
     validDoom: ({ context, event }) => {
       if (event.type !== 'FLOWER_DOOM') return false;
       const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi');
       const target = getPlayer(context.players, event.targetId);
-      return !!jacheongbi?.alive && canUseSkill(jacheongbi, 'doom-flower') && !!target?.alive;
+      return (
+        !!jacheongbi?.alive &&
+        canUseSkill(jacheongbi, 'doom-flower') &&
+        context.reviveTargetId === null &&
+        !!target?.alive
+      );
     },
     // 개인 발언 Skip: 현재 발언자 본인만 유효
     currentSpeakerSkip: ({ context, event }) =>
@@ -197,6 +193,7 @@ export const gameMachine = setup({
     /* ── 밤 ── */
     validInvestigate: ({ context, event }) => {
       if (event.type !== 'HAETAE_INVESTIGATE') return false;
+      if (context.lastInvestigation !== null) return false; // 밤당 1회 — 이미 조사했으면 재조사 불가
       const haetae = context.players.find((p) => p.characterId === 'haetae');
       const target = getPlayer(context.players, event.targetId);
       return !!haetae?.alive && !!target?.alive && target.id !== haetae.id;
@@ -271,6 +268,8 @@ export const gameMachine = setup({
       if (event.type !== 'VOTE') return {};
       return { votes: { ...context.votes, [event.voterId]: event.targetId } };
     }),
+    // 처형 투표(또는 재투표) 종료 순간의 스냅샷 — 결과를 지우기 직전에 호출해야 한다(9번 피드백)
+    snapshotVoteResult: assign(({ context }) => ({ lastVoteResult: { ...context.votes } })),
     // 1차 선출 결과 적용 — 단독 최다면 확정, 무득표면 후보 중 무작위 (동표는 guard가 재투표로 분기)
     applyElectionRound1: assign(({ context }) => {
       const result = resolveElectionVote(context.votes, 1, { candidates: context.candidates });
@@ -329,17 +328,11 @@ export const gameMachine = setup({
       skipVotes: [],
     })),
     shiftSpeech: assign(({ context }) => ({ speechQueue: context.speechQueue.slice(1) })),
-    // 부활꽃: 대상 부활 + 해당 사망 건 폐기(트리거 미발동), 스킬 소모
-    applyRevive: assign(({ context, event }) => {
+    // 부활꽃: 대상만 기록 — 도깨비 보호 결과를 아직 모르므로 실제 반영·스킬 소모는
+    // 새벽(processDawn)에서 도깨비 보호와 함께 일괄 처리한다 (setDokkaebiProtection과 동일 패턴)
+    setRevive: assign(({ event }) => {
       if (event.type !== 'FLOWER_REVIVE') return {};
-      const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi')!;
-      const players = markSkillUsed(context.players, jacheongbi.id, 'revival-flower').map((p) =>
-        p.id === event.targetId ? { ...p, alive: true } : p,
-      );
-      return {
-        players,
-        pendingDeaths: context.pendingDeaths.filter((d) => d.playerId !== event.targetId),
-      };
+      return { reviveTargetId: event.targetId };
     }),
     // 멸망꽃: 즉시 처형 건 적재 (도깨비 장난으로 방어 불가 — 밤 킬 경로가 아니므로 자연히 미적용)
     applyDoom: assign(({ context, event }) => {
@@ -347,6 +340,7 @@ export const gameMachine = setup({
       const jacheongbi = context.players.find((p) => p.characterId === 'jacheongbi')!;
       return {
         players: markSkillUsed(context.players, jacheongbi.id, 'doom-flower'),
+        doomUsedTonight: true,
         pendingDeaths: [
           ...context.pendingDeaths,
           { playerId: event.targetId, cause: 'DOOM_FLOWER', applied: false } satisfies PendingDeath,
@@ -401,12 +395,17 @@ export const gameMachine = setup({
     }),
 
     /* ── 밤 ── */
-    clearNightState: assign({
+    // nightStartAlive: 이번 밤 시작 시점의 생존 스냅샷 — publicState.ts가 밤 사망 조기 노출을
+    // 막는 데 쓴다(4-c 피드백)
+    clearNightState: assign(({ context }) => ({
       evilVotes: {},
       lastInvestigation: null,
       skipVotes: [],
       dokkaebiProtectTargetId: null,
-    }),
+      reviveTargetId: null,
+      doomUsedTonight: false,
+      nightStartAlive: Object.fromEntries(context.players.map((p) => [p.id, p.alive])),
+    })),
     recordInvestigation: assign(({ context, event }) => {
       if (event.type !== 'HAETAE_INVESTIGATE') return {};
       const target = getPlayer(context.players, event.targetId)!;
@@ -440,13 +439,15 @@ export const gameMachine = setup({
         seduceNextDay: true,
       };
     }),
-    // 새벽 처리: 일차 증가, 연민 예약 부활, 밤 킬 판정(도깨비 보호 성공이면 무효 + 스킬 영구 소모)
+    // 새벽 처리: 일차 증가, 연민 예약 부활, 밤 킬 판정(도깨비 보호·자청비 부활꽃 중 하나라도
+    // 성공하면 무효 + 해당 스킬 영구 소모. 둘 다 성공(같은 대상)이면 둘 다 소모)
     applyDawn: assign(({ context }) => {
       const result = processDawn({
         players: context.players,
         scheduledRevivals: context.scheduledRevivals,
         nightKillTargetId: context.nightKillTargetId,
         dokkaebiProtectTargetId: context.dokkaebiProtectTargetId,
+        reviveTargetId: context.reviveTargetId,
       });
       return {
         day: context.day + 1,
@@ -455,7 +456,7 @@ export const gameMachine = setup({
         scheduledRevivals: result.scheduledRevivals,
         nightKillTargetId: null,
         dokkaebiProtectTargetId: null,
-        dokkaebiSavedTargetId: result.protectedTargetId,
+        reviveTargetId: null,
         votes: {},
         tieCandidates: [],
       };
@@ -541,10 +542,13 @@ export const gameMachine = setup({
       votes: {},
       tieCandidates: [],
       executionTargetId: null,
+      lastVoteResult: null,
       evilVotes: {},
       nightKillTargetId: null,
       dokkaebiProtectTargetId: null,
-      dokkaebiSavedTargetId: null,
+      reviveTargetId: null,
+      doomUsedTonight: false,
+      nightStartAlive: Object.fromEntries(input.players.map((p) => [p.id, p.alive])),
       seduceNextDay: false,
       companionTargetId: null,
       lastInvestigation: null,
@@ -706,11 +710,18 @@ export const gameMachine = setup({
             VOTE: { guard: 'validDayVote', actions: 'registerVote' },
             TIME_UP: [
               // 전이 조건: 전원 기권(득표자 없음) → 희생자 없이 밤으로 (5-4항 기권 규칙)
-              { guard: 'execNoExecution', target: '#night' },
+              { guard: 'execNoExecution', actions: 'snapshotVoteResult', target: '#night' },
               // 전이 조건: 최다 득표 단독 → 최후의 변론
-              { guard: 'execDecided', actions: 'applyExecutionRound1', target: 'finalPlea' },
+              {
+                guard: 'execDecided',
+                actions: ['snapshotVoteResult', 'applyExecutionRound1'],
+                target: 'finalPlea',
+              },
               // 전이 조건: 동표 → 최다득표자 동시 발언 20초
-              { actions: 'setTieCandidatesFromExecution', target: 'tieSpeech' },
+              {
+                actions: ['snapshotVoteResult', 'setTieCandidatesFromExecution'],
+                target: 'tieSpeech',
+              },
             ],
           },
         },
@@ -726,7 +737,7 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validDayRevote', actions: 'registerVote' },
             // 재투표 — 단독 확정 또는 재동표(·전원 기권) 시 동표 후보 중 무작위 1인 처형
-            TIME_UP: { actions: 'applyExecutionRound2', target: 'finalPlea' },
+            TIME_UP: { actions: ['snapshotVoteResult', 'applyExecutionRound2'], target: 'finalPlea' },
           },
         },
         // 최후의 변론 (20초) — 처형 대상자만 발언, 본인 Skip으로 즉시 사망 처리
@@ -777,46 +788,29 @@ export const gameMachine = setup({
             TIME_UP: { target: 'goodSkills' },
           },
         },
-        // 4) 해태/도깨비 스킬 (10초, 동시 진행) — 악 투표 이후로 이동(13번)
+        // 4) 해태/도깨비/자청비 스킬 (10초, 동시 진행) — 자청비 타이밍 통합 피드백으로 이 창에 합류
         goodSkills: {
           on: {
             HAETAE_INVESTIGATE: { guard: 'validInvestigate', actions: 'recordInvestigation' },
             DOKKAEBI_PRANK: { guard: 'validPrank', actions: 'setDokkaebiProtection' },
+            // 조언자: 다음 낮의 발언 방향(역순/정순) 결정 — 개인 발언 시작 전까지 유효
+            ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
+            // 부활꽃: 그날 밤 악 진영의 킬 대상만 후보(도깨비 보호 여부는 아직 미확정) — 선택만
+            // 기록하고, 실제 반영·소모는 새벽(dawn)에 도깨비 보호 결과와 함께 일괄 처리한다
+            FLOWER_REVIVE: { guard: 'validRevive', actions: 'setRevive' },
+            // 멸망꽃: 생존자 1인 즉시 처형 예약 (동귀어진류 봉인은 sealedByDeathCauses로 처리,
+            // 도깨비 장난으로 방어 불가 — 밤 킬 경로가 아니므로 자연히 미적용)
+            FLOWER_DOOM: { guard: 'validDoom', actions: 'applyDoom' },
+            // 명시적 패스 — 다른 스킬 창(해태·도깨비)이 아직 열려 있을 수 있으므로 상태 전이는 없음
+            FLOWER_PASS: {},
             TIME_UP: { target: 'dawn' },
           },
         },
-        // 5) 새벽 통과 상태: 일차 증가 → 연민 부활 → 밤 킬 판정(장난이면 "사망자 없음")
+        // 5) 새벽 판정: 일차 증가 → 연민 부활 → 도깨비 보호 + 자청비 부활꽃을 함께 반영한 밤 킬 판정
         dawn: {
           id: 'dawn',
           entry: 'applyDawn',
-          always: [
-            // 전이 조건: 자청비 생존 + 사용 가능한 꽃 있음 → 꽃 선택 (10초)
-            { guard: 'flowerPhaseAvailable', target: 'flowerDecision' },
-            // 전이 조건: 꽃 단계 불가 → 밤 사망자 트리거 처리 후 낮 진행
-            { actions: 'setResumeDay', target: '#resolveDeaths' },
-          ],
-        },
-        // 6) 자청비 부활꽃/멸망꽃 선택 (10초) — 이제 그 밤의 실제 사망 결과(도깨비 장난 반영)를
-        //    보고 고른다. 같은 밤 두 꽃 동시 사용 불가(전이가 1회로 보장)
-        flowerDecision: {
-          on: {
-            // 조언자: 다음 낮의 발언 방향(역순/정순) 결정 — 개인 발언 시작 전까지 유효
-            ADVISOR_DIRECTION: { actions: 'setSpeechDirection' },
-            // 부활꽃: 그날 밤 악 진영 킬 사망자만 부활 → 남은 사망 트리거 처리
-            FLOWER_REVIVE: {
-              guard: 'validRevive',
-              actions: ['applyRevive', 'setResumeDay'],
-              target: '#resolveDeaths',
-            },
-            // 멸망꽃: 생존자 1인 즉시 처형 (동귀어진류 봉인은 sealedByDeathCauses로 처리)
-            FLOWER_DOOM: {
-              guard: 'validDoom',
-              actions: ['applyDoom', 'setResumeDay'],
-              target: '#resolveDeaths',
-            },
-            FLOWER_PASS: { actions: 'setResumeDay', target: '#resolveDeaths' },
-            TIME_UP: { actions: 'setResumeDay', target: '#resolveDeaths' },
-          },
+          always: { actions: 'setResumeDay', target: '#resolveDeaths' },
         },
       },
     },

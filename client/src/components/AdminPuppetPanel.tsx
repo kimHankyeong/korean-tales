@@ -82,7 +82,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
     active && publicState
       ? resolveActivePrompt(
           publicState,
-          { characterId: active.characterId, faction: active.faction, seat: active.seat },
+          { characterId: active.characterId, faction: active.faction, seat: active.seat, teammateIds: [] },
           active.playerId,
           timerPhaseKey,
         )

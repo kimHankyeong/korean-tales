@@ -26,15 +26,15 @@ function makeSession(overrides?: Partial<ConstructorParameters<typeof GameSessio
 }
 
 /**
- * 밤 0(게임은 항상 밤부터 시작) + 자청비 꽃 선택(멸망꽃은 사망자와 무관하게 항상 선택
- * 가능해 매 새벽마다 뜬다, 자동 패스) 총 소요 시간 — 9인 모드 조언자 선출 타이머 직전까지.
+ * 밤 0(게임은 항상 밤부터 시작) 총 소요 시간 — 악 토론·악 투표·악 개별 스킬·선 진영
+ * 스킬(해태·도깨비·자청비, 자청비 타이밍 통합 피드백으로 이 창에 합류) → 9인 모드
+ * 조언자 선출 타이머 직전까지.
  */
 const NIGHT_ZERO_MS =
   (TIMER_CONFIG.nightGoodSkillDecision +
     TIMER_CONFIG.nightEvilDiscussion +
     TIMER_CONFIG.vote +
-    TIMER_CONFIG.nightEvilIndividualSkill +
-    TIMER_CONFIG.morningFlowerDecision) *
+    TIMER_CONFIG.nightEvilIndividualSkill) *
   1000;
 
 describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
@@ -134,8 +134,8 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
     );
     const snap = session.getSnapshot();
     expect(snap.context.day).toBe(2);
-    // 2일차 아침: 자청비 생존 → 꽃 선택 10초
-    expect(snap.matches({ night: 'flowerDecision' })).toBe(true);
+    // 2일차 낮 개인 발언 시작 (자청비 부활꽃/멸망꽃은 goodSkills 시간에 자동 패스됨)
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
     session.stop();
   });
 

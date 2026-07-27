@@ -7,6 +7,7 @@
  * (7~9명이 2×4~2×5면 한 화면에 다 들어온다), 가로 모드·데스크톱에서는 기존처럼 세로 목록으로
  * 보여준다. 닉네임은 좁은 칸에서 줄바꿈되지 않도록 4글자로 축약한다(truncateName).
  * 조언자로 선출된 생존자는 프로필 왼쪽에 주황색 지팡이(🪄) 표시 — 죽으면 사라진다.
+ * 본인이 악 진영이면 같은 팀원의 닉네임이 빨갛게 표시되어 서로 알아볼 수 있다(3번 피드백).
  */
 
 import type { PublicPlayerState } from '@korean-tales/shared';
@@ -18,10 +19,13 @@ export function PlayerListPanel({
   players,
   myId,
   advisorId,
+  teammateIds,
 }: {
   players: PublicPlayerState[];
   myId?: string;
   advisorId?: string | null;
+  /** 악 진영 본인에게만 채워지는 팀원 id 목록(game:role.teammateIds) */
+  teammateIds?: string[];
 }) {
   return (
     <aside
@@ -42,7 +46,11 @@ export function PlayerListPanel({
             <Avatar name={p.name} url={p.avatarUrl} size={30} />
             {p.id !== myId && <SuspicionMark playerId={p.id} />}
           </div>
-          <span className="min-w-0 truncate text-sm text-slate-100">
+          <span
+            className={`min-w-0 truncate text-sm ${
+              teammateIds?.includes(p.id) ? 'text-red-400' : 'text-slate-100'
+            }`}
+          >
             <b className="mr-1 text-amber-300">{p.seat}번</b>
             {truncateName(p.name)}
           </span>

@@ -12,7 +12,10 @@ beforeAll(() => {
   });
 });
 
-function renderMyPage(profileImageUrl: string | null = null) {
+function renderMyPage(
+  profileImageUrl: string | null = null,
+  onFetchMatchHistory?: () => Promise<import('./MyPage').MyPageMatchHistoryEntry[]>,
+) {
   const onChangeNickname = vi.fn(async () => null);
   const onUploadAvatar = vi.fn(async () => null);
   const onChangeBgmVolume = vi.fn();
@@ -24,6 +27,7 @@ function renderMyPage(profileImageUrl: string | null = null) {
       onUploadAvatar={onUploadAvatar}
       bgmVolume={0.4}
       onChangeBgmVolume={onChangeBgmVolume}
+      onFetchMatchHistory={onFetchMatchHistory}
       onClose={onClose}
     />,
   );
@@ -84,5 +88,36 @@ describe('마이페이지 (requirements 11번)', () => {
     selectFile(new File(['png-bytes'], 'me.png', { type: 'image/png' }));
     expect(screen.getByRole('dialog', { name: '프로필 사진 자르기' })).toBeTruthy();
     expect(screen.getByLabelText('확대 배율')).toBeTruthy();
+  });
+
+  it('onFetchMatchHistory 미지정 시 전적 섹션이 아예 표시되지 않는다', () => {
+    renderMyPage();
+    expect(screen.queryByText('최근 전적')).toBeNull();
+  });
+
+  it('마운트 시 최근 전적을 불러와 표시하고, 클릭하면 그 판의 전원이 펼쳐진다 (2번 항목)', async () => {
+    const onFetchMatchHistory = vi.fn(async () => [
+      {
+        gameId: 'g1',
+        playedAt: '2026-01-01T00:00:00.000Z',
+        mode: 9 as const,
+        winner: 'GOOD' as const,
+        mySeat: 3,
+        myCharacterId: 'jacheongbi' as const,
+        isWinner: true,
+        players: [
+          { seat: 1, characterId: 'jeoseung' as const, nickname: '악당', isWinner: false },
+          { seat: 3, characterId: 'jacheongbi' as const, nickname: '달래', isWinner: true },
+        ],
+      },
+    ]);
+    renderMyPage(null, onFetchMatchHistory);
+
+    expect(await screen.findByText(/3번 자청비/)).toBeTruthy();
+    expect(screen.getByText('승리')).toBeTruthy(); // 요약 행의 배지
+
+    fireEvent.click(screen.getByText(/3번 자청비/));
+    expect(await screen.findByText(/1번 악당/)).toBeTruthy();
+    expect(screen.getByText(/3번 달래/)).toBeTruthy();
   });
 });

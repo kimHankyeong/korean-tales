@@ -11,6 +11,7 @@ import { CHARACTERS } from '@korean-tales/shared';
 import { corsOrigin, createApp } from './app';
 import { AuthService } from './auth/service';
 import { prisma } from './db';
+import { HistoryService } from './history/service';
 import { registerHandlers } from './socket/registerHandlers';
 
 const PORT = Number(process.env.PORT ?? 4000);
@@ -18,14 +19,15 @@ const PORT = Number(process.env.PORT ?? 4000);
 const REQUIRE_AUTH = process.env.REQUIRE_AUTH === 'true';
 
 const auth = new AuthService(prisma);
-const app = await createApp(auth);
+const history = new HistoryService(prisma);
+const app = await createApp(auth, { history });
 await app.ready();
 
 const io = new Server(app.server, {
   // REST와 동일한 CORS 정책 — CLIENT_ORIGIN 환경변수로 도메인 제한
   cors: { origin: corsOrigin(), credentials: true },
 });
-registerHandlers(io, Math.random, { auth, requireAuth: REQUIRE_AUTH });
+registerHandlers(io, Math.random, { auth, requireAuth: REQUIRE_AUTH, history });
 
 await app.listen({ port: PORT, host: '0.0.0.0' });
 console.log(
