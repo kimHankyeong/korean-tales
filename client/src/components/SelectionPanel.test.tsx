@@ -66,6 +66,17 @@ describe('투표/스킬 선택 공용 컴포넌트 (requirements 6번)', () => {
     expect(onForgo).toHaveBeenCalledTimes(1);
   });
 
+  it('입력 순서와 무관하게 번호 오름차순으로 정렬되어 나열된다', () => {
+    const shuffled: SelectablePlayer[] = [
+      { id: 'p9', seat: 9, name: '아홉', alive: true },
+      { id: 'p2', seat: 2, name: '바우', alive: true },
+      { id: 'p5', seat: 5, name: '다섯', alive: true },
+    ];
+    render(<SelectionPanel title="처형 투표" players={shuffled} buttonLabel="투표하기" onConfirm={() => {}} />);
+    const seats = screen.getAllByText(/^\d+번$/).map((el) => el.textContent);
+    expect(seats).toEqual(['2번', '5번', '9번']);
+  });
+
   it('disabledIds 대상은 선택할 수 없다', () => {
     const onConfirm = vi.fn();
     render(

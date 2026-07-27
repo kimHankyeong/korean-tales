@@ -208,7 +208,8 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 투표
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor);
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal, 9번 피드백)
+    timeUp(actor); // 결과 공개 종료 → 밤
     expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     expect(aliveIds(actor)).toHaveLength(9);
   });
@@ -220,13 +221,15 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     timeUp(actor); // → vote
     voteAll(actor, ['p1'], 'p5');
     voteAll(actor, ['p2'], 'p6');
-    timeUp(actor); // 동표 → 동시 발언
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 동표 → 동시 발언
     expect(actor.getSnapshot().matches({ day: 'tieSpeech' })).toBe(true);
     timeUp(actor); // → 재투표 (후보는 p5·p6로 제한)
     actor.send({ type: 'VOTE', voterId: 'p1', targetId: 'p9' }); // 후보 아님 — 무시
     voteAll(actor, ['p1'], 'p5');
     voteAll(actor, ['p2'], 'p6');
-    timeUp(actor); // 재동표 → 무작위 (rng=0 → p5)
+    timeUp(actor); // 재투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 재동표 → 무작위 (rng=0 → p5)
     const snap = actor.getSnapshot();
     expect(snap.matches({ day: 'finalPlea' })).toBe(true);
     expect(snap.context.executionTargetId).toBe('p5');
@@ -241,7 +244,8 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
-    timeUp(actor); // → finalPlea
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → finalPlea
     actor.send({ type: 'SKIP', playerId: 'p2' }); // 대상자 아님 — 무시
     expect(actor.getSnapshot().matches({ day: 'finalPlea' })).toBe(true);
     actor.send({ type: 'SKIP', playerId: 'p1' }); // 본인 skip → 즉시 처형
@@ -255,7 +259,8 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // → night (evilDiscussion)
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → night (evilDiscussion)
     timeUp(actor); // evilDiscussion → evilVote
     timeUp(actor); // evilVote → evilSkills (킬 없음)
     actor.send({ type: 'GUMIHO_SEDUCE' });
@@ -302,7 +307,8 @@ describe('밤 페이즈 (requirements 4번)', () => {
     passSpeeches(actor);
     timeUp(actor); // → vote
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // → night
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → night
   }
 
   it('해태 투사: 깡철이는 "악 진영이 아닙니다"로 기록된다', () => {
@@ -401,7 +407,8 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
       aliveIds(actor).filter((id) => id !== targetId),
       targetId,
     );
-    timeUp(actor); // → finalPlea
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → finalPlea
     timeUp(actor); // → 처형 → resolveDeaths
   }
 
@@ -469,7 +476,8 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // → night
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → night
   }
 
   it('도깨비 보호가 성공한 밤: 킬은 무산되지만, 그 밤 지정한 길동무는 저승사자가 낮에 처형되면 그대로 동반 사망한다', () => {
@@ -495,7 +503,8 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
-    timeUp(actor); // → finalPlea
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → finalPlea
     timeUp(actor); // → 처형 → 사망 처리
     expect(player(actor, 'p1').alive).toBe(false);
     expect(player(actor, 'p6').alive).toBe(false); // 동반 사망 — 장난은 밤 킬만 막는다
@@ -623,7 +632,8 @@ describe('승리 판정 (requirements 8번)', () => {
     timeUp(actor); // 토론 → 투표
     // 장화홍련(p7) 처형 → 유서로 마지막 악 p1 지목
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p7'), 'p7');
-    timeUp(actor); // → 변론
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 변론
     timeUp(actor); // → 처형 → 유서 대기
     actor.send({ type: 'GRUDGE_TARGET', targetId: 'p1' }); // 연쇄 사망 → 악 전멸
     const snap = actor.getSnapshot();
@@ -637,7 +647,8 @@ describe('승리 판정 (requirements 8번)', () => {
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p9'), 'p9'); // 바리공주(p9) 처형
-    timeUp(actor); // → 최후의 변론
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 최후의 변론
     timeUp(actor); // → 처형 → 사망 처리
     const snap = actor.getSnapshot();
     expect(player(actor, 'p9').alive).toBe(false);
@@ -653,7 +664,8 @@ describe('승리 판정 (requirements 8번)', () => {
     passSpeeches(actor);
     timeUp(actor);
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
-    timeUp(actor);
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 변론
     timeUp(actor); // 처형 → 밤
     expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     timeUp(actor); // evilDiscussion → evilVote
@@ -670,7 +682,8 @@ describe('승리 판정 (requirements 8번)', () => {
     passSpeeches(actor);
     timeUp(actor);
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p3'), 'p3');
-    timeUp(actor);
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 변론
     timeUp(actor);
     const snap = actor.getSnapshot();
     expect(snap.status).toBe('done');
@@ -712,6 +725,7 @@ describe('도중에 나가기 (FORFEIT)', () => {
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
     voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
     timeUp(actor); // → 변론
     timeUp(actor); // → 처형
     expect(player(actor, 'p1').alive).toBe(false);
@@ -742,6 +756,8 @@ describe('도중에 나가기 (FORFEIT)', () => {
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
     voteAll(actor, aliveIds(actor), 'ABSTAIN'); // 전원 기권 → 밤
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 밤
     timeUp(actor); // evilDiscussion → evilVote
     timeUp(actor); // evilVote → evilSkills (무투표)
     actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' }); // 저승사자(p1)가 길동무로 도깨비(p6) 지정

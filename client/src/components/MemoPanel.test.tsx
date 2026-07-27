@@ -47,6 +47,33 @@ describe('메모장 (10번 피드백)', () => {
     expect(useGameStore.getState().memoLines).toEqual([]);
   });
 
+  it('"수정" 버튼으로 기존 메모 내용을 고칠 수 있다', () => {
+    useGameStore.setState({ memoLines: ['원래 문장'] });
+    render(<MemoPanel onSendLine={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('메모장'));
+    fireEvent.click(screen.getByLabelText('"원래 문장" 메모 수정하기'));
+
+    const editInput = screen.getByLabelText('"원래 문장" 메모 수정') as HTMLInputElement;
+    expect(editInput.value).toBe('원래 문장');
+    fireEvent.change(editInput, { target: { value: '고친 문장' } });
+    fireEvent.click(screen.getByRole('button', { name: '저장' }));
+
+    expect(useGameStore.getState().memoLines).toEqual(['고친 문장']);
+    expect(screen.queryByText('원래 문장')).toBeNull();
+  });
+
+  it('수정 중 "취소"를 누르면 내용이 바뀌지 않는다', () => {
+    useGameStore.setState({ memoLines: ['그대로 유지'] });
+    render(<MemoPanel onSendLine={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('메모장'));
+    fireEvent.click(screen.getByLabelText('"그대로 유지" 메모 수정하기'));
+    fireEvent.change(screen.getByLabelText('"그대로 유지" 메모 수정'), { target: { value: '바뀔 뻔' } });
+    fireEvent.click(screen.getByRole('button', { name: '취소' }));
+
+    expect(useGameStore.getState().memoLines).toEqual(['그대로 유지']);
+    expect(screen.getByText('그대로 유지')).toBeTruthy();
+  });
+
   it('언제든(빈 메모 상태에서도) 기입 가능하다는 안내가 표시된다', () => {
     render(<MemoPanel onSendLine={vi.fn()} />);
     fireEvent.click(screen.getByLabelText('메모장'));

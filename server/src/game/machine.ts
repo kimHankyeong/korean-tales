@@ -123,6 +123,9 @@ export const gameMachine = setup({
       resolveExecutionVote(context.votes, 1).kind === 'NO_EXECUTION',
     // 전이 조건: 처형 투표 최다 득표 단독 확정
     execDecided: ({ context }) => resolveExecutionVote(context.votes, 1).kind === 'EXECUTE',
+    // voteReveal(투표 결과 공개) 종료 후 어디로 갈지 — postVoteTarget에 저장해둔 값을 읽는다
+    postVoteTargetIsNight: ({ context }) => context.postVoteTarget === 'NIGHT',
+    postVoteTargetIsFinalPlea: ({ context }) => context.postVoteTarget === 'FINAL_PLEA',
     // 전체 토론 skip 완주: 생존자 전원 (선출 토론·낮 토론 공용)
     allAliveSkipComplete: ({ context, event }) =>
       event.type === 'SKIP' && skipCompletes(alivePlayers(context.players), context.skipVotes, event.playerId),
@@ -283,6 +286,10 @@ export const gameMachine = setup({
     }),
     // 처형 투표(또는 재투표) 종료 순간의 스냅샷 — 결과를 지우기 직전에 호출해야 한다(9번 피드백)
     snapshotVoteResult: assign(({ context }) => ({ lastVoteResult: { ...context.votes } })),
+    // voteReveal 종료 후 목적지 지정 — vote/revote의 TIME_UP 분기마다 하나씩 호출된다
+    setPostVoteTargetNight: assign({ postVoteTarget: 'NIGHT' as const }),
+    setPostVoteTargetFinalPlea: assign({ postVoteTarget: 'FINAL_PLEA' as const }),
+    setPostVoteTargetTieSpeech: assign({ postVoteTarget: 'TIE_SPEECH' as const }),
     // 1차 선출 결과 적용 — 단독 최다면 확정, 무득표면 후보 중 무작위 (동표는 guard가 재투표로 분기)
     applyElectionRound1: assign(({ context }) => {
       const result = resolveElectionVote(context.votes, 1, { candidates: context.candidates });
@@ -578,6 +585,7 @@ export const gameMachine = setup({
       tieCandidates: [],
       executionTargetId: null,
       lastVoteResult: null,
+      postVoteTarget: null,
       evilVotes: {},
       nightKillTargetId: null,
       dokkaebiProtectTargetId: null,
@@ -754,19 +762,34 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validDayVote', actions: 'registerVote' },
             TIME_UP: [
-              // 전이 조건: 전원 기권(득표자 없음) → 희생자 없이 밤으로 (5-4항 기권 규칙)
-              { guard: 'execNoExecution', actions: 'snapshotVoteResult', target: '#night' },
-              // 전이 조건: 최다 득표 단독 → 최후의 변론
+              // 전이 조건: 전원 기권(득표자 없음) → 결과 공개 후 밤으로 (5-4항 기권 규칙)
+              {
+                guard: 'execNoExecution',
+                actions: ['snapshotVoteResult', 'setPostVoteTargetNight'],
+                target: 'voteReveal',
+              },
+              // 전이 조건: 최다 득표 단독 → 결과 공개 후 최후의 변론
               {
                 guard: 'execDecided',
-                actions: ['snapshotVoteResult', 'applyExecutionRound1'],
-                target: 'finalPlea',
+                actions: ['snapshotVoteResult', 'applyExecutionRound1', 'setPostVoteTargetFinalPlea'],
+                target: 'voteReveal',
               },
-              // 전이 조건: 동표 → 최다득표자 동시 발언 20초
+              // 전이 조건: 동표 → 결과 공개 후 최다득표자 동시 발언 20초
               {
-                actions: ['snapshotVoteResult', 'setTieCandidatesFromExecution'],
-                target: 'tieSpeech',
+                actions: ['snapshotVoteResult', 'setTieCandidatesFromExecution', 'setPostVoteTargetTieSpeech'],
+                target: 'voteReveal',
               },
+            ],
+          },
+        },
+        // 투표 결과 공개(9번 피드백) — 누가 누구에게 투표했는지 5초간 보여준 뒤에만 다음
+        // 단계(밤·최후의 변론·동시 발언)로 진행한다. 목적지는 postVoteTarget에 저장돼 있다
+        voteReveal: {
+          on: {
+            TIME_UP: [
+              { guard: 'postVoteTargetIsNight', target: '#night' },
+              { guard: 'postVoteTargetIsFinalPlea', target: 'finalPlea' },
+              { target: 'tieSpeech' },
             ],
           },
         },
@@ -781,8 +804,12 @@ export const gameMachine = setup({
           entry: 'clearVotes',
           on: {
             VOTE: { guard: 'validDayRevote', actions: 'registerVote' },
-            // 재투표 — 단독 확정 또는 재동표(·전원 기권) 시 동표 후보 중 무작위 1인 처형
-            TIME_UP: { actions: ['snapshotVoteResult', 'applyExecutionRound2'], target: 'finalPlea' },
+            // 재투표 — 단독 확정 또는 재동표(·전원 기권) 시 동표 후보 중 무작위 1인 처형,
+            // 역시 결과 공개(voteReveal)를 거친 뒤 최후의 변론으로
+            TIME_UP: {
+              actions: ['snapshotVoteResult', 'applyExecutionRound2', 'setPostVoteTargetFinalPlea'],
+              target: 'voteReveal',
+            },
           },
         },
         // 최후의 변론 (20초) — 처형 대상자만 발언, 본인 Skip으로 즉시 사망 처리

@@ -38,6 +38,7 @@ stateDiagram-v2
         personalSpeech: 개인 발언 (방 옵션 80/120초 × 인원)\n조언자는 마지막, Skip = 발언자 본인만
         discussion: 전체 토론 (방 옵션 3분/5분)\n생존자 전원 Skip 시 조기 종료
         vote: 처형 투표 (10초, 기권 포함)
+        voteReveal: 투표 결과 공개 (5초)\n누가 누구에게 투표했는지 화살표로 공개\npostVoteTarget에 따라 분기
         tieSpeech: 최다득표자 동시 발언 (20초)
         revote: 재투표 (동표자만 후보)
         finalPlea: 최후의 변론 (20초)\nSkip = 처형 대상자 본인만 → 즉시 사망 처리
@@ -45,10 +46,11 @@ stateDiagram-v2
         personalSpeech --> personalSpeech: TIME_UP/본인 SKIP [다음 발언자 남음]
         personalSpeech --> discussion: TIME_UP/본인 SKIP [마지막 발언자]
         discussion --> vote: TIME_UP / 전원 SKIP [유혹 미사용]
-        vote --> tieSpeech: TIME_UP [최다 득표 동표]
+        vote --> voteReveal: TIME_UP [항상 —\npostVoteTarget 기록]
+        voteReveal --> tieSpeech: TIME_UP [최다 득표 동표]
         tieSpeech --> revote: TIME_UP
-        vote --> finalPlea: TIME_UP [최다 득표 단독]
-        revote --> finalPlea: TIME_UP [단독 확정 또는\n재동표 → 무작위 1인]
+        voteReveal --> finalPlea: TIME_UP [최다 득표 단독]
+        revote --> voteReveal: TIME_UP [단독 확정 또는\n재동표 → 무작위 1인]
     }
 
     state "밤 (4번)" as night {
@@ -79,7 +81,7 @@ stateDiagram-v2
     }
 
     firstMorning --> day: 조언자 확정\n(출마자 없으면 조언자 없이 — 정순 고정)
-    day --> night: 전원 기권 [희생자 없음]\n또는 유혹 발동 [투표 스킵]
+    day --> night: voteReveal 종료 [희생자 없음]\n또는 유혹 발동 [투표 스킵 — voteReveal 안 거침]
     day --> resolveDeaths: 변론 종료/본인 Skip [처형 집행]
     night --> resolveDeaths: 새벽(dawn) 종료 [밤 사망자 트리거]
     resolveDeaths --> day: 큐 소진 [복귀 = 낮 개인 발언]
@@ -102,6 +104,7 @@ stateDiagram-v2
 | 개인 발언 (발언자별) | 80/120초 | 방 옵션 `RoomTimerSettings.personalSpeechSeconds` |
 | 전체 토론 | 3분/5분 | 방 옵션 `RoomTimerSettings.discussionSeconds` |
 | 처형 투표·재투표 / 악 처치 투표 | 10초 | `vote` |
+| 처형 투표(재투표 포함) 결과 공개 — 끝나야 다음 단계로 진행 | 5초 | `voteReveal` |
 | 동표 동시 발언 | 20초 | `tieSpeech` |
 | 최후의 변론 | 20초 | `finalPlea` |
 | 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 10초 / 10초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |

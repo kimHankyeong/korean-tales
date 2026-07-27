@@ -36,9 +36,10 @@ function TargetGrid({
   onSelect: (target: string | 'ABSTAIN') => void;
   allowAbstain?: boolean;
 }) {
+  const sorted = [...candidates].sort((a, b) => a.seat - b.seat);
   return (
     <div className="flex flex-wrap gap-1" role="listbox" aria-label="대상 선택">
-      {candidates.map((c) => (
+      {sorted.map((c) => (
         <button
           key={c.playerId}
           type="button"

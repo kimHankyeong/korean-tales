@@ -46,6 +46,12 @@ export const TIMER_CONFIG = {
   nightDokkaebiDecision: 10,
   /** 투표 시간 */
   vote: 10,
+  /**
+   * 처형 투표(재투표 포함) 종료 직후: 누가 누구에게 투표했는지 공개(9번 피드백). 이 시간이
+   * 끝나야 다음 단계(밤·최후의 변론·동시 발언)로 넘어간다 — game:voteResult의 durationMs도
+   * 이 값과 맞춘다
+   */
+  voteReveal: 5,
   /** 낮 투표 확정 직후: 최후의 변론 (처형 대상자 채팅) */
   finalPlea: 20,
   /** 사망 확정 시: 장화홍련 피 맺힌 유서 대상 선택 */

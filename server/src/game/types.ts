@@ -96,6 +96,12 @@ export interface GameContext {
    * 새 객체로 대입한다. null이면 아직 종료된 투표가 없음
    */
   lastVoteResult: Record<string, string> | null;
+  /**
+   * 처형 투표(또는 재투표) 종료 후 voteReveal(투표 결과 공개) 상태를 거칠 때, 그 공개가
+   * 끝나면 어디로 갈지 기억해두는 값 — voteReveal 자체는 목적지가 매번 다른 공용 상태라
+   * XState 정적 target만으로는 표현할 수 없어 guard가 이 값을 읽고 분기한다
+   */
+  postVoteTarget: 'NIGHT' | 'FINAL_PLEA' | 'TIE_SPEECH' | null;
 
   /* 밤 */
   evilVotes: Record<string, string>;

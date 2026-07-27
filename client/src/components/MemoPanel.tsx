@@ -10,15 +10,31 @@ import { useGameStore } from '../store/gameStore';
 export function MemoPanel({ onSendLine }: { onSendLine: (text: string) => void }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState('');
   const memoLines = useGameStore((s) => s.memoLines);
   const addMemoLine = useGameStore((s) => s.addMemoLine);
   const removeMemoLine = useGameStore((s) => s.removeMemoLine);
+  const updateMemoLine = useGameStore((s) => s.updateMemoLine);
 
   function submitDraft(e: { preventDefault(): void }) {
     e.preventDefault();
     if (!draft.trim()) return;
     addMemoLine(draft);
     setDraft('');
+  }
+
+  function startEdit(index: number, currentText: string) {
+    setEditingIndex(index);
+    setEditDraft(currentText);
+  }
+
+  function saveEdit(e: { preventDefault(): void }) {
+    e.preventDefault();
+    if (editingIndex === null || !editDraft.trim()) return;
+    updateMemoLine(editingIndex, editDraft);
+    setEditingIndex(null);
+    setEditDraft('');
   }
 
   return (
@@ -74,32 +90,70 @@ export function MemoPanel({ onSendLine }: { onSendLine: (text: string) => void }
               {memoLines.length === 0 && (
                 <li className="text-center text-xs text-slate-500">아직 메모가 없어요.</li>
               )}
-              {memoLines.map((line, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5"
-                >
-                  <span className="min-w-0 flex-1 break-words text-sm text-slate-100">{line}</span>
-                  <button
-                    type="button"
-                    onClick={() => onSendLine(line)}
-                    aria-label={`"${line}" 채팅으로 보내기`}
-                    title="채팅으로 보내기"
-                    className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600"
+              {memoLines.map((line, i) =>
+                editingIndex === i ? (
+                  <li key={i} className="rounded-lg border border-amber-600/60 bg-slate-800/60 px-2.5 py-1.5">
+                    <form onSubmit={saveEdit} className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        aria-label={`"${line}" 메모 수정`}
+                        autoFocus
+                        className="min-w-0 flex-1 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm text-slate-100"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!editDraft.trim()}
+                        className="shrink-0 rounded bg-amber-600 px-2 py-1 text-[10px] font-bold text-white disabled:opacity-40"
+                      >
+                        저장
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingIndex(null)}
+                        className="shrink-0 rounded px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200"
+                      >
+                        취소
+                      </button>
+                    </form>
+                  </li>
+                ) : (
+                  <li
+                    key={i}
+                    className="flex items-start gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5"
                   >
-                    보내기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => removeMemoLine(i)}
-                    aria-label={`"${line}" 메모 삭제`}
-                    title="삭제"
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-slate-400 hover:text-red-300"
-                  >
-                    ✕
-                  </button>
-                </li>
-              ))}
+                    <span className="min-w-0 flex-1 break-words text-sm text-slate-100">{line}</span>
+                    <button
+                      type="button"
+                      onClick={() => onSendLine(line)}
+                      aria-label={`"${line}" 채팅으로 보내기`}
+                      title="채팅으로 보내기"
+                      className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600"
+                    >
+                      보내기
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => startEdit(i, line)}
+                      aria-label={`"${line}" 메모 수정하기`}
+                      title="수정"
+                      className="shrink-0 rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-slate-600"
+                    >
+                      수정
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeMemoLine(i)}
+                      aria-label={`"${line}" 메모 삭제`}
+                      title="삭제"
+                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-slate-400 hover:text-red-300"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ),
+              )}
             </ul>
           </div>
         </div>

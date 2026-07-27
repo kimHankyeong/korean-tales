@@ -100,6 +100,8 @@ export interface GameUiState {
   addMemoLine(text: string): void;
   /** 메모장 줄 삭제 */
   removeMemoLine(index: number): void;
+  /** 메모장 줄 수정 — 빈 문자열이면 무시(삭제는 removeMemoLine으로) */
+  updateMemoLine(index: number, text: string): void;
   /** 화면 중앙 발표 문구 표시(4초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
   setAnnouncement(text: string, durationMs?: number): void;
   clearAnnouncement(): void;
@@ -201,6 +203,12 @@ export const useGameStore = create<GameUiState>((set, get) => ({
     }),
   removeMemoLine: (index) =>
     set((state) => ({ memoLines: state.memoLines.filter((_, i) => i !== index) })),
+  updateMemoLine: (index, text) =>
+    set((state) => {
+      const trimmed = text.trim();
+      if (!trimmed) return {};
+      return { memoLines: state.memoLines.map((line, i) => (i === index ? trimmed : line)) };
+    }),
 
   setAnnouncement: (text, durationMs = 4000) =>
     set({ announcement: { id: nextAnnouncementId++, text, durationMs } }),
@@ -211,7 +219,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       voteResult: {
         id: nextVoteResultId++,
         votes: payload.votes,
-        durationMs: payload.durationMs ?? 3000,
+        durationMs: payload.durationMs ?? 5000,
       },
     }),
   clearVoteResult: () => set({ voteResult: null }),
@@ -251,6 +259,14 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       // 개인 발언이 모두 끝나고 전체 토론으로 전환되는 순간 안내 (12번 피드백)
       if (publicState.phase === 'day.discussion' && prevPhase === 'day.personalSpeech') {
         messages = [...messages, { id: messageId(), kind: 'SYSTEM', text: '전체발언시간이 시작되었습니다.' }];
+      }
+
+      // 조언자 후보 개인 발언(어필)이 모두 끝나고 후보 전체 토론으로 전환되는 순간 안내
+      if (publicState.phase === 'firstMorning.electionDiscussion' && prevPhase === 'firstMorning.appeal') {
+        messages = [
+          ...messages,
+          { id: messageId(), kind: 'SYSTEM', text: '조언자 후보 전체 발언시간이 시작되었습니다.' },
+        ];
       }
 
       // 최후의 발언(변론) 시작 안내 — 처형 확정자 번호 포함 (11번 피드백)
@@ -295,8 +311,22 @@ export const useGameStore = create<GameUiState>((set, get) => ({
     })),
 
   applyTimerSync: (payload) =>
-    set({
-      timer: { label: payload.phaseKey, endsAt: payload.endsAt, serverNow: payload.serverNow },
+    set((state) => {
+      const timer = { label: payload.phaseKey, endsAt: payload.endsAt, serverNow: payload.serverNow };
+      // 조언자 후보 개인 발언(어필) 차례 안내 — PublicGameState에는 현재 발언자가 없어
+      // (gamePrompts.ts 참고) 타이머 phaseKey("appeal:<playerId>")로만 판별할 수 있다
+      let messages = state.messages;
+      if (payload.phaseKey.startsWith('appeal:') && payload.phaseKey !== state.timer?.label) {
+        const speakerId = payload.phaseKey.slice('appeal:'.length);
+        const seat = state.players.find((p) => p.id === speakerId)?.seat;
+        if (seat != null) {
+          messages = [
+            ...messages,
+            { id: messageId(), kind: 'SYSTEM', text: `${seat}번 후보의 개인 발언 시간입니다.` },
+          ];
+        }
+      }
+      return { timer, messages };
     }),
 
   clearTimer: () => set({ timer: null }),

@@ -46,6 +46,9 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: `discussion:${context.day}`, seconds: context.roomSettings.discussionSeconds }; // 방 옵션 3분/5분
   if (snapshot.matches({ day: 'vote' }))
     return { key: `vote:${context.day}`, seconds: TIMER_CONFIG.vote };
+  // 처형 투표(재투표 포함) 종료 직후 결과 공개(9번 피드백) — 끝나야 다음 단계로 넘어간다
+  if (snapshot.matches({ day: 'voteReveal' }))
+    return { key: `voteReveal:${context.day}`, seconds: TIMER_CONFIG.voteReveal };
   if (snapshot.matches({ day: 'tieSpeech' }))
     return { key: `tieSpeech:${context.day}`, seconds: TIMER_CONFIG.tieSpeech };
   if (snapshot.matches({ day: 'revote' }))

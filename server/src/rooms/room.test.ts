@@ -407,12 +407,13 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
     session.send({ type: 'TIME_UP' }); // 토론 → 투표
     for (const id of ids) session.send({ type: 'VOTE', voterId: id, targetId: 'ABSTAIN' });
-    session.send({ type: 'TIME_UP' }); // → 밤
+    session.send({ type: 'TIME_UP' }); // 투표 종료 → 투표 결과 공개(voteReveal)
+    session.send({ type: 'TIME_UP' }); // 결과 공개 종료 → 밤
     expect(session.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     return { roles, ids };
   }
 
-  it('낮 처형 투표가 끝나면 투표 내역이 game:voteResult로 방 전체에 3초간 공개된다 (9번 피드백)', () => {
+  it('낮 처형 투표가 끝나면 투표 내역이 game:voteResult로 방 전체에 5초간 공개된다 (9번 피드백)', () => {
     const { room, emitter } = makeRoom();
     fillRoom(room);
     room.startGame('u1');
@@ -425,12 +426,12 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     for (const id of ids) {
       session.send({ type: 'VOTE', voterId: id, targetId: id === 'u1' ? 'ABSTAIN' : 'u1' });
     }
-    session.send({ type: 'TIME_UP' }); // 투표 종료 → 최후의 변론
+    session.send({ type: 'TIME_UP' }); // 투표 종료 → 투표 결과 공개(voteReveal)
 
     const results = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameVoteResult);
     expect(results).toHaveLength(1);
     const payload = results[0]!.payload as VoteResultPayload;
-    expect(payload.durationMs).toBe(3000);
+    expect(payload.durationMs).toBe(5000);
     expect(payload.votes.u1).toBe('ABSTAIN');
     for (const id of ids.filter((i) => i !== 'u1')) expect(payload.votes[id]).toBe('u1');
 
@@ -481,6 +482,7 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     for (const id of ids) {
       session.send({ type: 'VOTE', voterId: id, targetId: id === jeoseungId ? 'ABSTAIN' : jeoseungId });
     }
+    session.send({ type: 'TIME_UP' }); // 투표 종료 → 투표 결과 공개(voteReveal)
     session.send({ type: 'TIME_UP' }); // → finalPlea
     session.send({ type: 'TIME_UP' }); // 처형 확정 → 사망 처리(길동무 동반 사망 자동 발동)
 

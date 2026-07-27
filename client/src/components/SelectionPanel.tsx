@@ -48,7 +48,7 @@ export function SelectionPanel({
   onForgo,
 }: SelectionPanelProps) {
   const [selected, setSelected] = useState<SelectionTarget | null>(null);
-  const alivePlayers = players.filter((p) => p.alive);
+  const alivePlayers = players.filter((p) => p.alive).sort((a, b) => a.seat - b.seat);
 
   return (
     <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center">

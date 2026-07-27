@@ -93,6 +93,7 @@ describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', 
     for (const id of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p8', 'p9']) {
       actor.send({ type: 'VOTE', voterId: id, targetId: 'p7' });
     }
+    actor.send({ type: 'TIME_UP' }); // 투표 종료 → 투표 결과 공개(voteReveal)
     actor.send({ type: 'TIME_UP' }); // → 변론
     actor.send({ type: 'TIME_UP' }); // → 처형 → 유서 대기
     expect(snapshot().context.awaiting).toEqual({ kind: 'GRUDGE', playerId: 'p7' });

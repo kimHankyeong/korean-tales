@@ -4,10 +4,14 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { formatCountdown } from '../lib/format';
+import { formatCountdown, friendlyTimerLabel } from '../lib/format';
 
 export interface CountdownTarget {
-  /** 카운트다운 대상 이름 (예: "토론 시간", "개인 발언 시간") */
+  /**
+   * 서버 timer:sync의 원본 phaseKey(예: "evilDiscussion:3", "appeal:p5") — gamePrompts.ts가
+   * 현재 발언자 판별 등에 원본 값 그대로 쓰므로 여기서는 가공하지 않는다. 화면 표시용 한글
+   * 라벨 변환은 friendlyTimerLabel()이 렌더링 시점에 담당한다.
+   */
   label: string;
   /** 서버 기준 만료 시각 (epoch ms) */
   endsAt: number;
@@ -32,7 +36,7 @@ export function CountdownText({ target }: { target: CountdownTarget }) {
 
   return (
     <span className="tabular-nums text-xs text-amber-300" data-testid="countdown">
-      {formatCountdown(target.label, secondsLeft)}
+      {formatCountdown(friendlyTimerLabel(target.label), secondsLeft)}
     </span>
   );
 }

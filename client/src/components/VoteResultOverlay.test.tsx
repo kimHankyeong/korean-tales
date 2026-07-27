@@ -21,7 +21,7 @@ afterEach(() => {
   useGameStore.setState({ voteResult: null, players: [] });
 });
 
-describe('VoteResultOverlay — 투표 결과 3초 공개 (9번 피드백)', () => {
+describe('VoteResultOverlay — 투표 결과 5초 공개 (9번 피드백)', () => {
   it('voteResult가 없으면 아무것도 렌더링하지 않는다', () => {
     const { container } = render(<VoteResultOverlay />);
     expect(container.firstChild).toBeNull();
@@ -46,10 +46,10 @@ describe('VoteResultOverlay — 투표 결과 3초 공개 (9번 피드백)', () 
     expect(screen.queryByText('기권')).toBeNull();
   });
 
-  it('durationMs 미지정 시 기본 3초가 적용된다', () => {
+  it('durationMs 미지정 시 기본 5초가 적용된다', () => {
     render(<VoteResultOverlay />);
     act(() => useGameStore.getState().applyVoteResult({ votes: { p1: 'p3' } }));
-    act(() => vi.advanceTimersByTime(2999));
+    act(() => vi.advanceTimersByTime(4999));
     expect(screen.getByText('3번 초롱')).toBeTruthy();
     act(() => vi.advanceTimersByTime(1));
     expect(screen.queryByText('3번 초롱')).toBeNull();

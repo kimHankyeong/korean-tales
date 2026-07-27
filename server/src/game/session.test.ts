@@ -122,7 +122,8 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
     vi.advanceTimersByTime(TIMER_CONFIG.advisorCandidacy * 1000); // 선출(출마 없음)
     vi.advanceTimersByTime(9 * 80 * 1000); // 개인 발언 9명
     vi.advanceTimersByTime(180 * 1000); // 전체 토론
-    vi.advanceTimersByTime(TIMER_CONFIG.vote * 1000); // 투표(전원 미투표=기권) → 밤
+    vi.advanceTimersByTime(TIMER_CONFIG.vote * 1000); // 투표(전원 미투표=기권) → 투표 결과 공개
+    vi.advanceTimersByTime(TIMER_CONFIG.voteReveal * 1000); // 결과 공개 종료 → 밤
     expect(session.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     // 밤도 자동 진행: 악토론 90 → 악투표 10 → 악개별 10 → 선스킬 10 → 새벽 (13번 재배치)
     vi.advanceTimersByTime(
@@ -150,7 +151,8 @@ describe('GameSession (타이머 ↔ 상태 머신 결합)', () => {
     for (const id of ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p8', 'p9']) {
       session.send({ type: 'VOTE', voterId: id, targetId: 'p7' });
     }
-    vi.advanceTimersByTime(TIMER_CONFIG.vote * 1000); // → finalPlea
+    vi.advanceTimersByTime(TIMER_CONFIG.vote * 1000); // → 투표 결과 공개
+    vi.advanceTimersByTime(TIMER_CONFIG.voteReveal * 1000); // 결과 공개 종료 → finalPlea
     vi.advanceTimersByTime(TIMER_CONFIG.finalPlea * 1000); // → 처형 → awaitGrudge
     expect(session.getSnapshot().matches({ resolveDeaths: 'awaitGrudge' })).toBe(true);
     expect(syncs.at(-1)).toMatchObject({

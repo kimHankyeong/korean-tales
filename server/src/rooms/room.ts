@@ -440,6 +440,9 @@ export class Room {
     const timerSync = this.session.currentTimerSync();
     if (timerSync) this.emitter.toPlayer(playerId, SOCKET_EVENTS.timerSync, timerSync);
     this.sendFlowerOptions(snapshot, playerId);
+    // 관리자 본인이 재접속한 경우 — admin:roster는 onSnapshot에서만 나가고 여기선 빠져 있어
+    // 재접속 전 마지막 스냅샷이 클라이언트에 그대로 남는 버그가 있었다(사망 좌석 불일치로 발견)
+    if (playerId === this.adminPlayerId) this.broadcastAdminRoster(snapshot.context.players);
   }
 
   private onSnapshot(snapshot: GameSnapshot): void {
@@ -467,11 +470,15 @@ export class Room {
     }
     this.lastAnnouncement = announcement;
 
-    // 낮 처형 투표(또는 재투표) 종료 직후 3초간 투표 내역 공개 (9번 피드백) — 새 결과가
-    // 생겼을 때만(참조 동일성) 1회 중계
+    // 낮 처형 투표(또는 재투표) 종료 직후 투표 내역 공개 (9번 피드백) — 새 결과가 생겼을
+    // 때만(참조 동일성) 1회 중계. 표시 시간은 서버가 실제로 다음 단계로 넘어가기 전까지
+    // 기다리는 voteReveal 상태의 길이와 맞춘다(TIMER_CONFIG.voteReveal)
     const voteResult = snapshot.context.lastVoteResult;
     if (voteResult && voteResult !== this.lastVoteResult) {
-      const payload: VoteResultPayload = { votes: { ...voteResult }, durationMs: 3000 };
+      const payload: VoteResultPayload = {
+        votes: { ...voteResult },
+        durationMs: TIMER_CONFIG.voteReveal * 1000,
+      };
       this.emitter.toRoom(SOCKET_EVENTS.gameVoteResult, payload);
     }
     this.lastVoteResult = voteResult;

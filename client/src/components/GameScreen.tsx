@@ -53,6 +53,16 @@ export function GameScreen() {
   const [flowerMode, setFlowerMode] = useState<'REVIVE' | 'DOOM' | null>(null);
   const [surrenderBusy, setSurrenderBusy] = useState(false);
   const [surrenderError, setSurrenderError] = useState<string | null>(null);
+  // 투항 동의 버튼 연타 방지 — 1분에 한 번만 누를 수 있다
+  const [surrenderCooldownUntil, setSurrenderCooldownUntil] = useState(0);
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    if (surrenderCooldownUntil <= Date.now()) return;
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [surrenderCooldownUntil]);
+  const surrenderOnCooldown = nowTick < surrenderCooldownUntil;
+  const surrenderCooldownSeconds = Math.max(0, Math.ceil((surrenderCooldownUntil - nowTick) / 1000));
   const [showSound, setShowSound] = useState(false);
   // Skip/단발성 버튼 프롬프트 클릭 피드백 — 눌렀는지 눈에 보이게(채도 낮춤).
   // 새 발언 차례·페이즈가 오면 다시 누를 수 있어야 하므로 그 시점에 초기화한다.
@@ -85,6 +95,8 @@ export function GameScreen() {
   }
 
   async function agreeSurrenderClick() {
+    if (surrenderOnCooldown) return;
+    setSurrenderCooldownUntil(Date.now() + 60_000); // 연타 방지 — 1분에 한 번만
     setSurrenderBusy(true);
     setSurrenderError(null);
     const ack = await emitWithAck<{ ok: boolean; error?: string }>(SOCKET_EVENTS.surrenderAgree);
@@ -228,11 +240,11 @@ export function GameScreen() {
         {store.publicState?.winner === null && (
           <button
             type="button"
-            disabled={surrenderBusy}
+            disabled={surrenderBusy || surrenderOnCooldown}
             onClick={() => void agreeSurrenderClick()}
             className="rounded-lg border border-red-700/60 px-3 py-1.5 text-left text-sm text-red-300 hover:bg-red-900/30 disabled:opacity-50"
           >
-            투항 동의
+            {surrenderOnCooldown ? `투항 동의 (${surrenderCooldownSeconds}초 후 재시도)` : '투항 동의'}
           </button>
         )}
         {surrenderError && (
