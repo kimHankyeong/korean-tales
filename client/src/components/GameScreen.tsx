@@ -353,28 +353,49 @@ export function GameScreen() {
                   패스
                 </button>
               </div>
+            ) : flowerMode === 'REVIVE' ? (
+              (() => {
+                // 그날 밤 죽을 사람은 악 진영 투표로 정해진 희생자 한 명뿐이라 고를 필요 없이
+                // 바로 "n번을 살리시겠습니까?"로 확인만 받는다
+                const reviveTargetId = store.flowerOptions?.revivableTargetIds[0];
+                const reviveTarget = store.players.find((p) => p.id === reviveTargetId);
+                return (
+                  <>
+                    <p className="text-sm text-amber-200">
+                      {reviveTarget ? `${reviveTarget.seat}번을 살리시겠습니까?` : '되살릴 대상이 없습니다'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={!reviveTargetId}
+                        onClick={() => {
+                          if (!reviveTargetId) return;
+                          sendAction({ type: 'FLOWER_REVIVE', targetId: reviveTargetId });
+                          setFlowerMode(null);
+                        }}
+                        className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        살리기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFlowerMode(null)}
+                        className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300"
+                      >
+                        취소
+                      </button>
+                    </div>
+                  </>
+                );
+              })()
             ) : (
               <SelectionPanel
-                title={
-                  flowerMode === 'REVIVE'
-                    ? '부활꽃 — 되살릴 사람 (그날 밤 사망자만)'
-                    : '멸망꽃으로 누구를 죽이시겠습니까?'
-                }
+                title="멸망꽃으로 누구를 죽이시겠습니까?"
                 buttonLabel="선택하기"
-                players={
-                  flowerMode === 'REVIVE'
-                    ? store.players
-                        .filter((p) => store.flowerOptions?.revivableTargetIds.includes(p.id))
-                        .map((p) => ({ ...p, alive: true })) // SelectionPanel은 alive만 표시하므로 부활 대상(사망자)을 표시용으로 보정
-                    : store.players
-                }
+                players={store.players}
                 onConfirm={(target) => {
                   if (target === 'ABSTAIN') return;
-                  sendAction(
-                    flowerMode === 'REVIVE'
-                      ? { type: 'FLOWER_REVIVE', targetId: target }
-                      : { type: 'FLOWER_DOOM', targetId: target },
-                  );
+                  sendAction({ type: 'FLOWER_DOOM', targetId: target });
                   setFlowerMode(null);
                 }}
               />

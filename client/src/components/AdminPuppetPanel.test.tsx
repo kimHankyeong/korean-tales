@@ -82,6 +82,31 @@ describe('관리자 가상 플레이어 조작 패널 (13번)', () => {
     });
   });
 
+  it('부활꽃을 누르면 대상 선택 없이 곧바로 "n번을 살리시겠습니까?"가 뜨고, 살리기를 누르면 그 대상으로 제출된다', () => {
+    const nightRoster: AdminRosterPayload['players'] = [
+      { playerId: 'u1', name: '방장', isVirtual: false, characterId: 'haetae', faction: 'GOOD', seat: 1, alive: true },
+      { playerId: 'virtual:1', name: '가상플레이어1', isVirtual: true, characterId: 'jacheongbi', faction: 'GOOD', seat: 2, alive: true },
+      { playerId: 'virtual:2', name: '가상플레이어2', isVirtual: true, characterId: 'jeoseung', faction: 'EVIL', seat: 3, alive: true },
+    ];
+    const nightState: PublicGameState = { ...votePhaseState, phase: 'night.goodSkills' };
+    const onSubmit = vi.fn();
+    render(
+      <AdminPuppetPanel
+        roster={nightRoster}
+        publicState={nightState}
+        timerPhaseKey={null}
+        flowerOptions={{ revivableTargetIds: ['virtual:2'] }}
+        onSubmit={onSubmit}
+      />,
+    );
+    fireEvent.click(screen.getByText('2번 가상플레이어1')); // 자청비 조작 대상 선택
+    fireEvent.click(screen.getByRole('button', { name: '부활꽃' }));
+    expect(screen.getByText('3번을 살리시겠습니까?')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: '살리기' }));
+    expect(onSubmit).toHaveBeenCalledWith('virtual:1', { type: 'FLOWER_REVIVE', targetId: 'virtual:2' });
+  });
+
   it('죽은 가상 플레이어는 선택할 수 없다', () => {
     const deadRoster = roster.map((p) => (p.playerId === 'virtual:1' ? { ...p, alive: false } : p));
     render(

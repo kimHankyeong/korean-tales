@@ -219,32 +219,45 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                     패스
                   </button>
                 </div>
+              ) : flowerMode === 'REVIVE' ? (
+                (() => {
+                  // 그날 밤 죽을 사람은 악 진영 투표로 정해진 희생자 한 명뿐이라 고를 필요 없이
+                  // 바로 "n번을 살리시겠습니까?"로 확인만 받는다
+                  const reviveTargetId = flowerOptions?.revivableTargetIds[0];
+                  const reviveTarget = reviveTargetId ? roster.find((p) => p.playerId === reviveTargetId) : undefined;
+                  return (
+                    <>
+                      <p className="text-[11px] text-amber-200">
+                        {reviveTarget ? `${reviveTarget.seat}번을 살리시겠습니까?` : '되살릴 대상이 없습니다'}
+                      </p>
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          disabled={!reviveTargetId}
+                          onClick={() => reviveTargetId && submit({ type: 'FLOWER_REVIVE', targetId: reviveTargetId })}
+                          className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
+                        >
+                          살리기
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFlowerMode(null)}
+                          className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
+                        >
+                          취소
+                        </button>
+                      </div>
+                    </>
+                  );
+                })()
               ) : (
                 <>
-                  <p className="text-[11px] text-amber-200">
-                    {flowerMode === 'REVIVE' ? '부활꽃 — 되살릴 사람' : '멸망꽃으로 누구를 죽이시겠습니까?'}
-                  </p>
-                  <TargetGrid
-                    candidates={
-                      flowerMode === 'REVIVE'
-                        ? roster.filter((p) => flowerOptions?.revivableTargetIds.includes(p.playerId))
-                        : roster.filter((p) => p.alive)
-                    }
-                    selected={target}
-                    onSelect={setTarget}
-                  />
+                  <p className="text-[11px] text-amber-200">멸망꽃으로 누구를 죽이시겠습니까?</p>
+                  <TargetGrid candidates={roster.filter((p) => p.alive)} selected={target} onSelect={setTarget} />
                   <button
                     type="button"
                     disabled={target === null || target === 'ABSTAIN'}
-                    onClick={() =>
-                      target &&
-                      target !== 'ABSTAIN' &&
-                      submit(
-                        flowerMode === 'REVIVE'
-                          ? { type: 'FLOWER_REVIVE', targetId: target }
-                          : { type: 'FLOWER_DOOM', targetId: target },
-                      )
-                    }
+                    onClick={() => target && target !== 'ABSTAIN' && submit({ type: 'FLOWER_DOOM', targetId: target })}
                     className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
                   >
                     선택하기
