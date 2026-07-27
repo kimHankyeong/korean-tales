@@ -12,7 +12,7 @@ import {
   type Faction,
   type RoomSettingsPayload,
 } from '@korean-tales/shared';
-import { emitWithAck, getSocket } from '../lib/socket';
+import { emitWithAck, getSocket, myPlayerId } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
@@ -30,9 +30,8 @@ interface RoomAck {
 const FACTION_LABEL: Record<Faction, string> = { GOOD: '선', EVIL: '악', NEUTRAL: '중립' };
 
 export function RoomLobbyScreen() {
-  // 방의 플레이어 id는 계정 id가 아니라 소켓 id다(server registerHandlers.ts) —
-  // RoomLobbyScreen은 room:create/join 성공 후에만 렌더링되므로 이 시점엔 항상 연결돼 있다.
-  const myId = getSocket().id;
+  // 로그인 유저는 계정 id(acct:<userId>)가 서버 쪽 playerId다 — myPlayerId() 참고
+  const myId = myPlayerId();
   const room = useRoomStore((s) => s.room)!;
   const leaveRoom = useRoomStore((s) => s.leaveRoom);
   const [error, setError] = useState<string | null>(null);

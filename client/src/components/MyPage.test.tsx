@@ -95,6 +95,37 @@ describe('마이페이지 (requirements 11번)', () => {
     expect(screen.queryByText('최근 전적')).toBeNull();
   });
 
+  it('onLogout 미지정 시 로그아웃 버튼이 표시되지 않는다', () => {
+    renderMyPage();
+    expect(screen.queryByRole('button', { name: '로그아웃' })).toBeNull();
+  });
+
+  it('로그아웃 버튼 클릭 → 확인하면 onLogout이 호출되고, 취소하면 호출되지 않는다', () => {
+    const onLogout = vi.fn();
+    const confirmSpy = vi.spyOn(window, 'confirm');
+    render(
+      <MyPage
+        user={{ nickname: '달래', profileImageUrl: null }}
+        onChangeNickname={vi.fn(async () => null)}
+        onUploadAvatar={vi.fn(async () => null)}
+        bgmVolume={0.4}
+        onChangeBgmVolume={vi.fn()}
+        onLogout={onLogout}
+        onClose={vi.fn()}
+      />,
+    );
+
+    confirmSpy.mockReturnValueOnce(false);
+    fireEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+    expect(onLogout).not.toHaveBeenCalled();
+
+    confirmSpy.mockReturnValueOnce(true);
+    fireEvent.click(screen.getByRole('button', { name: '로그아웃' }));
+    expect(onLogout).toHaveBeenCalledTimes(1);
+
+    confirmSpy.mockRestore();
+  });
+
   it('마운트 시 최근 전적을 불러와 표시하고, 클릭하면 그 판의 전원이 펼쳐진다 (2번 항목)', async () => {
     const onFetchMatchHistory = vi.fn(async () => [
       {

@@ -40,6 +40,12 @@ describe('클라이언트 액션 권한 검증 (정보 은닉·부정 방지)', 
     expect(isActionAllowed('p1', { type: 'CANDIDACY_APPLY', playerId: 'p2' }, snapshot())).toBe(false);
   });
 
+  it('도중에 나가기는 본인 명의만 가능하다', () => {
+    const { snapshot } = snapshotOf();
+    expect(isActionAllowed('p1', { type: 'FORFEIT', playerId: 'p1' }, snapshot())).toBe(true);
+    expect(isActionAllowed('p1', { type: 'FORFEIT', playerId: 'p2' }, snapshot())).toBe(false);
+  });
+
   it('캐릭터 전용 스킬은 해당 캐릭터 본인만 쓸 수 있다', () => {
     const { snapshot } = snapshotOf();
     expect(isActionAllowed('p5', { type: 'HAETAE_INVESTIGATE', targetId: 'p1' }, snapshot())).toBe(true);

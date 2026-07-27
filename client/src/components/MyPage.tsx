@@ -40,6 +40,8 @@ export interface MyPageProps {
   onChangePassword?: (currentPassword: string, newPassword: string) => Promise<string | null>;
   /** 최근 전적 조회 — 미지정 시 전적 섹션 숨김 */
   onFetchMatchHistory?: () => Promise<MyPageMatchHistoryEntry[]>;
+  /** 로그아웃 — 미지정 시 로그아웃 버튼 숨김(데모 모드 등) */
+  onLogout?: () => void;
   onClose: () => void;
 }
 
@@ -51,6 +53,7 @@ export function MyPage({
   onChangeBgmVolume,
   onChangePassword,
   onFetchMatchHistory,
+  onLogout,
   onClose,
 }: MyPageProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -274,13 +277,26 @@ export function MyPage({
           </div>
         )}
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="text-xs text-slate-400 underline hover:text-slate-200"
-        >
-          닫기
-        </button>
+        <div className="flex w-full items-center justify-between border-t border-slate-700 pt-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs text-slate-400 underline hover:text-slate-200"
+          >
+            닫기
+          </button>
+          {onLogout && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('로그아웃할까요?')) onLogout();
+              }}
+              className="text-xs font-semibold text-red-400 underline hover:text-red-300"
+            >
+              로그아웃
+            </button>
+          )}
+        </div>
       </section>
 
       {cropFile && (

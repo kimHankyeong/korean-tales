@@ -132,4 +132,41 @@ describe('Socket.io 실시간 레이어 (7인 모드 풀 사이클)', () => {
     const state = await statePromise;
     expect(state.currentSpeakerId).not.toBe(host.id); // 다음 발언자로 넘어감
   }, 15000);
+
+  it('도중에 나가기(FORFEIT) 후 room:leave를 보내면, 명단(이름 표시용)은 남고 이 소켓만 방 중계에서 빠진다', async () => {
+    // 이전 테스트에서 이어지는 같은 게임 — guests[1](u3)이 도중에 나간다
+    const leaving = clients[2]!;
+    const host = clients[0]!;
+
+    const statePromise = waitFor<PublicGameState>(host, SOCKET_EVENTS.gameState);
+    const forfeitAck = await leaving.emitWithAck(SOCKET_EVENTS.gameAction, {
+      type: 'FORFEIT',
+      playerId: leaving.id,
+    });
+    expect(forfeitAck.ok).toBe(true);
+    const state = await statePromise;
+    expect(state.players.find((p) => p.id === leaving.id)?.alive).toBe(false);
+
+    leaving.emit(SOCKET_EVENTS.roomLeave);
+    // 서버가 처리할 시간을 준다 — ack가 없는 이벤트라 짧게 대기
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // 명단(이름 표시용)에는 여전히 남아있다 — 지워지면 남은 사람 화면에 id가 그대로 노출된다
+    expect(manager.roomOf(host.id!)!.players.some((p) => p.id === leaving.id)).toBe(true);
+
+    // 이후 방 전체 브로드캐스트는 더 이상 이 소켓에 닿지 않는다 — 낮/밤 무관하게 항상 유효한
+    // 트리거로 다른 생존자의 FORFEIT을 하나 더 사용한다(공개 채팅은 밤에는 막혀 있어 부적합)
+    let receivedAfterLeave = false;
+    leaving.once(SOCKET_EVENTS.gameState, () => {
+      receivedAfterLeave = true;
+    });
+    const anotherGuest = clients[3]!;
+    const anotherAck = await anotherGuest.emitWithAck(SOCKET_EVENTS.gameAction, {
+      type: 'FORFEIT',
+      playerId: anotherGuest.id,
+    });
+    expect(anotherAck.ok).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(receivedAfterLeave).toBe(false);
+  }, 15000);
 });

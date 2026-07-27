@@ -131,7 +131,12 @@ export function registerHandlers(
 
     socket.on(SOCKET_EVENTS.roomLeave, () => {
       const room = manager.roomOf(playerId);
-      if (room) void socket.leave(`room:${room.code}`);
+      if (!room) return;
+      void socket.leave(`room:${room.code}`);
+      // 게임 진행 중 나가기(도중에 나가기 후, 또는 관전 중 로그아웃 등)는 room.players에서
+      // 지우지 않는다 — 지우면 남은 플레이어들 화면에서 이 사람 이름이 id로 깨져 보인다.
+      // 이 소켓만 방 중계에서 조용히 빠지고, 멤버십(재접속 시 다시 찾아오는 용도)도 그대로 둔다.
+      if (room.inGame) return;
       manager.leave(playerId);
     });
 
@@ -199,6 +204,9 @@ export function registerHandlers(
     socket.on(SOCKET_EVENTS.gameAction, (action: ClientGameAction, ack?: Ack) => {
       const room = manager.roomOf(playerId);
       const error = room ? room.handleAction(playerId, action) : 'NOT_IN_ROOM';
+      // FORFEIT 자체는 게임 내부 사망 처리만 한다 — 화면을 실제로 나가는 것(소켓을 방
+      // 중계에서 빼는 것)은 클라이언트가 이어서 보내는 room:leave가 담당한다(관전 중
+      // 나가기와 로직을 공유하기 위함, roomLeave 핸들러 참고).
       ack?.(error ? { ok: false, error } : { ok: true });
     });
 

@@ -678,3 +678,75 @@ describe('승리 판정 (requirements 8번)', () => {
     expect(snap.context.winner).toBe('GOOD');
   });
 });
+
+describe('도중에 나가기 (FORFEIT)', () => {
+  it('생존자가 나가면 즉시 사망 처리되고, 승리 조건이 아직 안 갖춰졌으면 현재 페이즈가 그대로 유지된다', () => {
+    const actor = startGame();
+    skipElection(actor); // 첫날 낮 개인 발언 중 (p1 차례)
+    actor.send({ type: 'FORFEIT', playerId: 'p5' }); // 아직 발언 순서가 안 된 사람이 나감
+    const snap = actor.getSnapshot();
+    expect(player(actor, 'p5').alive).toBe(false);
+    expect(snap.status).toBe('active'); // 게임은 계속
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true); // 진행 중이던 페이즈 그대로
+    expect(snap.context.speechQueue).not.toContain('p5'); // 나중에 그 차례가 와도 멈추지 않도록 큐에서 제거
+  });
+
+  it('나감으로써 마지막 악 진영이 사라지면 즉시 게임이 종료된다', () => {
+    // 악 진영 중 p1(저승사자)만 생존한 상태로 시작
+    const players = makePlayers().map((p) =>
+      p.id === 'p2' || p.id === 'p3' ? { ...p, alive: false } : p,
+    );
+    const actor = createActor(gameMachine, { input: { players, rng: () => 0 } });
+    actor.start();
+    passNightAndFlower(actor);
+    timeUp(actor); // 선출 스킵
+    actor.send({ type: 'FORFEIT', playerId: 'p1' }); // 마지막 악이 나감 → 악 전멸
+    const snap = actor.getSnapshot();
+    expect(snap.status).toBe('done');
+    expect(snap.context.winner).toBe('GOOD');
+  });
+
+  it('이미 사망한 사람은 다시 나갈 수 없다 (중복 요청 무시)', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
+    timeUp(actor); // → 변론
+    timeUp(actor); // → 처형
+    expect(player(actor, 'p1').alive).toBe(false);
+    actor.send({ type: 'FORFEIT', playerId: 'p1' }); // 이미 죽은 사람 — 아무 효과 없음
+    expect(actor.getSnapshot().status).toBe('active');
+  });
+
+  it('나가는 사람이 조언자였다면 승계 절차 없이 즉시 파기되어 발언 순서가 정순 고정된다', () => {
+    const actor = startGame(() => 0);
+    actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p1' });
+    timeUp(actor); // → appeal
+    timeUp(actor); // → electionDiscussion
+    timeUp(actor); // → electionVote
+    voteAll(actor, ['p2', 'p3'], 'p1');
+    timeUp(actor); // p1이 조언자로 확정, 낮 개인 발언 시작
+    expect(actor.getSnapshot().context.advisorId).toBe('p1');
+
+    actor.send({ type: 'FORFEIT', playerId: 'p1' });
+    const snap = actor.getSnapshot();
+    expect(snap.context.advisorId).toBeNull();
+    expect(snap.context.advisorBroken).toBe(true);
+    expect(snap.matches({ day: 'personalSpeech' })).toBe(true); // 페이즈는 그대로 유지
+  });
+
+  it('나가는 것은 사망 트리거를 발동하지 않는다 — 길동무를 지정해둔 저승사자가 나가도 길동무는 죽지 않는다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor), 'ABSTAIN'); // 전원 기권 → 밤
+    timeUp(actor); // evilDiscussion → evilVote
+    timeUp(actor); // evilVote → evilSkills (무투표)
+    actor.send({ type: 'JEOSEUNG_COMPANION', targetId: 'p6' }); // 저승사자(p1)가 길동무로 도깨비(p6) 지정
+    actor.send({ type: 'FORFEIT', playerId: 'p1' }); // 저승사자가 도중에 나감 — "사망"이 아니라 이탈
+    expect(player(actor, 'p1').alive).toBe(false);
+    expect(player(actor, 'p6').alive).toBe(true); // 길동무 동반 사망 미발동
+  });
+});

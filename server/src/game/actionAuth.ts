@@ -33,6 +33,7 @@ export function isActionAllowed(
       return action.voterId === senderId;
     case 'SKIP':
     case 'CANDIDACY_APPLY':
+    case 'FORFEIT':
       return action.playerId === senderId;
 
     /* 역할 전용 */

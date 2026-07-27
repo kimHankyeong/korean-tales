@@ -248,6 +248,19 @@ export const gameMachine = setup({
     // 투항은 선/악 팀만 가능 (중립 제외) — 30초 팀 동의 집계는 Room 레이어가 담당
     validSurrender: ({ event }) =>
       event.type === 'TEAM_SURRENDER' && (event.faction === 'EVIL' || event.faction === 'GOOD'),
+    // 도중에 나가기: 대상이 아직 생존해 있어야 함(중복 요청 방지)
+    validForfeit: ({ context, event }) => {
+      if (event.type !== 'FORFEIT') return false;
+      return !!getPlayer(context.players, event.playerId)?.alive;
+    },
+    // 이탈로 즉시 승리 조건이 성립하는지 — 실제 반영 전 가정 계산(탈락 승리, 8번 섹션)
+    forfeitEndsGame: ({ context, event }) => {
+      if (event.type !== 'FORFEIT') return false;
+      const players = context.players.map((p) =>
+        p.id === event.playerId ? { ...p, alive: false } : p,
+      );
+      return checkWin(players) !== null;
+    },
   },
 
   actions: {
@@ -520,6 +533,28 @@ export const gameMachine = setup({
       if (event.type !== 'TEAM_SURRENDER') return {};
       return { winner: (event.faction === 'EVIL' ? 'GOOD' : 'EVIL') as 'GOOD' | 'EVIL' };
     }),
+    /**
+     * 도중에 나가기 — 즉시 사망 처리하되, 이는 "사망"이 아니라 "이탈"이므로 길동무·유서 같은
+     * 동반 사망 트리거는 발동하지 않는다(사망 트리거 큐를 거치지 않고 직접 alive만 뒤집는다).
+     * 아직 소비되지 않은 발언 순서열에서도 제거해, 나중에 죽은 사람 차례가 와서 게임이
+     * 멈추지 않게 한다. 조언자였다면 승계 절차 없이 즉시 파기(정순 고정)로 처리한다.
+     */
+    applyForfeit: assign(({ context, event }) => {
+      if (event.type !== 'FORFEIT') return {};
+      const players = context.players.map((p) =>
+        p.id === event.playerId ? { ...p, alive: false } : p,
+      );
+      const wasAdvisor = context.advisorId === event.playerId;
+      return {
+        players,
+        winner: checkWin(players),
+        speechQueue: context.speechQueue.filter((id) => id !== event.playerId),
+        appealQueue: context.appealQueue.filter((id) => id !== event.playerId),
+        candidates: context.candidates.filter((id) => id !== event.playerId),
+        tieCandidates: context.tieCandidates.filter((id) => id !== event.playerId),
+        ...(wasAdvisor ? { advisorId: null, advisorBroken: true } : {}),
+      };
+    }),
   },
 }).createMachine({
   id: 'game',
@@ -563,9 +598,19 @@ export const gameMachine = setup({
   },
   initial: 'setup',
 
-  // 전이 조건: 팀 전원 투항 확정(Room 레이어 30초 동의 완료) → 어느 상태에서든 즉시 게임 종료
   on: {
+    // 전이 조건: 팀 전원 투항 확정(Room 레이어 30초 동의 완료) → 어느 상태에서든 즉시 게임 종료
     TEAM_SURRENDER: { guard: 'validSurrender', actions: 'setSurrenderWinner', target: '#gameOver' },
+    // 도중에 나가기 — 어느 상태에서든 즉시 반영. 이로 인해 승리 조건이 성립하면 게임 종료,
+    // 아니면 현재 진행 중이던 페이즈는 그대로 유지한 채(내부 전이) 계속 진행된다
+    FORFEIT: [
+      {
+        guard: and(['validForfeit', 'forfeitEndsGame']),
+        actions: 'applyForfeit',
+        target: '#gameOver',
+      },
+      { guard: 'validForfeit', actions: 'applyForfeit' },
+    ],
   },
 
   states: {

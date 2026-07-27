@@ -37,6 +37,11 @@ export type GameEvent =
   | { type: 'ADVISOR_SUCCEED'; targetId: string }
   | { type: 'ADVISOR_DESTROY' }
   /**
+   * 도중에 나가기 — 게임을 지속하기 어려운 사정이 생긴 플레이어 본인이 즉시 기권(사망) 처리를
+   * 요청한다. 동반 사망(길동무·유서) 등 사망 트리거는 발동하지 않는다(사망이 아니라 이탈이므로).
+   */
+  | { type: 'FORFEIT'; playerId: string }
+  /**
    * 팀 전원 투항 확정 (6번 섹션) — 서버 전용.
    * 30초 팀 동의 집계는 방(Room) 레이어가 담당하고, 전원 동의 시 이 이벤트로 게임을 끝낸다.
    */

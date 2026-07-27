@@ -92,6 +92,10 @@ export function LobbyMenuScreen({ onStart }: { onStart: () => void }) {
             return result.ok ? null : result.error;
           }}
           onFetchMatchHistory={api.fetchMatchHistory}
+          onLogout={() => {
+            void api.logout();
+            useAuthStore.getState().signOut();
+          }}
           onClose={() => setShowMyPage(false)}
         />
       )}

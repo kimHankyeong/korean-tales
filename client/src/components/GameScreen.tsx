@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { CHARACTER_BY_ID, FACTION_META, SOCKET_EVENTS, type ClientGameAction } from '@korean-tales/shared';
 import * as api from '../lib/api';
 import { resolveActivePrompt } from '../lib/gamePrompts';
-import { emitWithAck, getSocket } from '../lib/socket';
+import { emitWithAck, getSocket, myPlayerId } from '../lib/socket';
 import { playSfx } from '../lib/sfx';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
@@ -65,9 +65,8 @@ export function GameScreen() {
   useEffect(() => {
     if (!user) return;
     store.resetForRealGame();
-    // 방/게임의 플레이어 id는 계정 id가 아니라 소켓 id다(server registerHandlers.ts) —
-    // 계정 id로 비교하면 currentSpeakerId 등과 절대 일치하지 않는다.
-    store.setMyId(getSocket().id ?? '');
+    // 로그인 유저는 계정 id(acct:<userId>)가 서버 쪽 playerId다 — myPlayerId() 참고
+    store.setMyId(myPlayerId());
     store.setMyProfile({ nickname: user.nickname, profileImageUrl: user.profileImageUrl });
     // 발언 순서 안내 문구(예: "(해)낮-80초-1번")에 방 옵션 반영
     const personalSpeechSeconds = useRoomStore.getState().room?.settings.personalSpeechSeconds;
@@ -95,6 +94,30 @@ export function GameScreen() {
 
   function goLobby() {
     useGameStore.setState({ gameOverResult: null });
+    getSocket().emit(SOCKET_EVENTS.roomLeave);
+    leaveRoom();
+  }
+
+  /**
+   * 인게임 중 도중에 나가기 — 게임을 지속하기 어려운 사정이 생겼을 때 사용. 생존 중이면 먼저
+   * FORFEIT으로 즉시 사망 처리해 나머지 인원이 끊김 없이 계속 진행할 수 있게 하고, 이미 죽어서
+   * 관전만 하던 중이었다면(사망 처리는 필요 없으므로) 곧장 나간다. 두 경우 다 room:leave로 이
+   * 소켓만 방 중계에서 빠지고(room.players에는 남아 다른 사람 화면에 이름이 계속 정상 표시됨),
+   * 이 클라이언트만 로컬로 로비로 돌아간다.
+   */
+  async function forfeitClick() {
+    const alive = !!store.players.find((p) => p.id === store.myId)?.alive;
+    const confirmText = alive
+      ? '정말 게임을 나가시겠어요? 즉시 사망 처리되며 되돌릴 수 없어요.'
+      : '정말 나가시겠어요?';
+    if (!window.confirm(confirmText)) return;
+    if (alive) {
+      const ack = await emitWithAck<{ ok: boolean }>(SOCKET_EVENTS.gameAction, {
+        type: 'FORFEIT',
+        playerId: store.myId,
+      });
+      if (!ack.ok) return;
+    }
     getSocket().emit(SOCKET_EVENTS.roomLeave);
     leaveRoom();
   }
@@ -138,6 +161,17 @@ export function GameScreen() {
           🔊
         </button>
         <MemoPanel onSendLine={sendChatText} />
+        {!store.gameOverResult && store.publicState && (
+          <button
+            type="button"
+            onClick={() => void forfeitClick()}
+            aria-label="도중에 나가기"
+            title="게임을 지속하기 어려우면 여기로 나갈 수 있어요"
+            className="rounded-full border border-red-700/60 bg-slate-900/90 px-3 py-1.5 text-xs font-semibold text-red-300 shadow-lg hover:bg-red-950/60"
+          >
+            나가기
+          </button>
+        )}
       </div>
       {showSkillBook && <SkillBookModal onClose={() => setShowSkillBook(false)} />}
       {showSound && <SoundSettingsModal onClose={() => setShowSound(false)} />}
@@ -360,6 +394,14 @@ export function GameScreen() {
             return result.ok ? null : result.error;
           }}
           onFetchMatchHistory={api.fetchMatchHistory}
+          onLogout={() => {
+            // 방에 속해 있었다면 먼저 명시적으로 나간다 — 소켓이 끊기는 것만 기다리면(재접속
+            // 유예 로직 때문에) 로비 자리 정리가 최대 30초 지연될 수 있다
+            getSocket().emit(SOCKET_EVENTS.roomLeave);
+            leaveRoom();
+            void api.logout();
+            useAuthStore.getState().signOut();
+          }}
           onClose={() => setShowMyPage(false)}
         />
       )}
