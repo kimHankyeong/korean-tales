@@ -75,7 +75,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
   const virtualPlayers = roster.filter((p) => p.isVirtual);
   const [actingAs, setActingAs] = useState<string | null>(null);
   const [target, setTarget] = useState<string | 'ABSTAIN' | null>(null);
-  const [flowerMode, setFlowerMode] = useState<'REVIVE' | 'DOOM' | null>(null);
+  const [flowerMode, setFlowerMode] = useState<'DOOM' | null>(null);
 
   const active = actingAs ? virtualPlayers.find((p) => p.playerId === actingAs) ?? null : null;
 
@@ -192,64 +192,43 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
             </div>
           )}
 
-          {prompt?.kind === 'FLOWER' && (
+          {prompt?.kind === 'FLOWER' && (() => {
+            // 그날 밤 죽을 사람은 악 진영 투표로 정해진 희생자 한 명뿐이라 따로 고를 필요 없이,
+            // 부활꽃 버튼 자체가 곧 "그 사람을 살리겠다"는 확정 클릭이 되도록 문구만 함께 보여준다
+            const reviveTargetId = flowerOptions?.revivableTargetIds[0];
+            const reviveTarget = reviveTargetId ? roster.find((p) => p.playerId === reviveTargetId) : undefined;
+            return (
             <div className="space-y-1.5">
               {flowerMode === null ? (
-                <div className="flex gap-1.5">
-                  <button
-                    type="button"
-                    disabled={!flowerOptions?.revivableTargetIds.length}
-                    onClick={() => setFlowerMode('REVIVE')}
-                    className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
-                  >
-                    부활꽃
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFlowerMode('DOOM')}
-                    className="rounded-lg border border-red-600 px-3 py-1 text-xs font-bold text-red-300"
-                  >
-                    멸망꽃
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => submit({ type: 'FLOWER_PASS' })}
-                    className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
-                  >
-                    패스
-                  </button>
-                </div>
-              ) : flowerMode === 'REVIVE' ? (
-                (() => {
-                  // 그날 밤 죽을 사람은 악 진영 투표로 정해진 희생자 한 명뿐이라 고를 필요 없이
-                  // 바로 "n번을 살리시겠습니까?"로 확인만 받는다
-                  const reviveTargetId = flowerOptions?.revivableTargetIds[0];
-                  const reviveTarget = reviveTargetId ? roster.find((p) => p.playerId === reviveTargetId) : undefined;
-                  return (
-                    <>
-                      <p className="text-[11px] text-amber-200">
-                        {reviveTarget ? `${reviveTarget.seat}번을 살리시겠습니까?` : '되살릴 대상이 없습니다'}
-                      </p>
-                      <div className="flex gap-1.5">
-                        <button
-                          type="button"
-                          disabled={!reviveTargetId}
-                          onClick={() => reviveTargetId && submit({ type: 'FLOWER_REVIVE', targetId: reviveTargetId })}
-                          className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
-                        >
-                          살리기
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFlowerMode(null)}
-                          className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
-                        >
-                          취소
-                        </button>
-                      </div>
-                    </>
-                  );
-                })()
+                <>
+                  {reviveTarget && (
+                    <p className="text-[11px] text-amber-200">{reviveTarget.seat}번을 살리시겠습니까?</p>
+                  )}
+                  <div className="flex gap-1.5">
+                    <button
+                      type="button"
+                      disabled={!reviveTargetId}
+                      onClick={() => reviveTargetId && submit({ type: 'FLOWER_REVIVE', targetId: reviveTargetId })}
+                      className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
+                    >
+                      부활꽃
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFlowerMode('DOOM')}
+                      className="rounded-lg border border-red-600 px-3 py-1 text-xs font-bold text-red-300"
+                    >
+                      멸망꽃
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => submit({ type: 'FLOWER_PASS' })}
+                      className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
+                    >
+                      패스
+                    </button>
+                  </div>
+                </>
               ) : (
                 <>
                   <p className="text-[11px] text-amber-200">멸망꽃으로 누구를 죽이시겠습니까?</p>
@@ -265,7 +244,8 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                 </>
               )}
             </div>
-          )}
+            );
+          })()}
         </div>
       )}
     </aside>
