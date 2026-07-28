@@ -57,7 +57,7 @@ stateDiagram-v2
         [*] --> evilDiscussion
         evilDiscussion: 악 진영 토론 (90초)\n악 생존자 전원 Skip 시 조기 종료
         evilVote: 악 처치 투표 (10초)\n무투표 → 킬 없음\n대상 확정(nightKillTargetId)
-        evilSkills: 악 개별 스킬 (10초)\n저승사자 길동무 / 구미호 유혹
+        evilSkills: 악 개별 스킬 (15초)\n저승사자 길동무 / 구미호 유혹
         goodSkills: 해태 투사 / 도깨비 장난 / 자청비 부활꽃·멸망꽃 (10초, 동시)\n자청비는 nightKillTargetId만 부활 후보\n(도깨비 보호 여부는 아직 모름) — 부활꽃/멸망꽃 동시 사용 불가\n조언자 발언 방향(역/정순) 결정 가능
         dawn: 새벽 (통과 상태)\n일차+1, 연민 부활\n밤 킬 판정(도깨비 보호 또는 자청비 부활꽃 성공 시 무효 — 둘 다 성공 시 둘 다 소모)
 
@@ -71,7 +71,7 @@ stateDiagram-v2
     state "사망 확정 트리거 (5-6항)" as resolveDeaths {
         [*] --> advance
         advance: 사망 큐 처리\n자동 트리거(동반 사망·연민 예약)는 연쇄까지 즉시
-        awaitGrudge: 장화홍련 — 피 맺힌 유서\n대상 선택 (10초, 포기 가능)\n멸망꽃 사망이면 트리거 없음
+        awaitGrudge: 장화홍련 — 피 맺힌 유서\n대상 선택 (15초, 포기 가능)\n멸망꽃 사망이면 트리거 없음
         awaitSuccession: 조언자 — 방울 승계/파기 (10초)\n미선택 시 자동 파기
 
         advance --> awaitGrudge: always [GRUDGE 입력 대기]
@@ -107,9 +107,9 @@ stateDiagram-v2
 | 처형 투표(재투표 포함) 결과 공개 — 끝나야 다음 단계로 진행 | 5초 | `voteReveal` |
 | 동표 동시 발언 | 20초 | `tieSpeech` |
 | 최후의 변론 | 20초 | `finalPlea` |
-| 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 15초 / 10초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |
+| 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 15초 / 15초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |
 | 악 토론 | 90초 | `nightEvilDiscussion` |
-| 피 맺힌 유서 / 방울 승계 | 10초 / 10초 | `deathJanghwaDecision`·`deathAdvisorDecision` |
+| 피 맺힌 유서 / 방울 승계 | 15초 / 10초 | `deathJanghwaDecision`·`deathAdvisorDecision` |
 | dawn·advance(통과)·gameOver | 없음 | — |
 
 ## 사망 확정 트리거 처리 순서 (사망자 1인 기준)

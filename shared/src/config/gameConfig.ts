@@ -36,8 +36,11 @@ export const RECONNECT_GRACE_SECONDS = 30;
 export const TIMER_CONFIG = {
   /** 밤: 악 진영 스킬 사용 결정 (2번 섹션 표 — 10초로 확정됨) */
   nightEvilSkillDecision: 10,
-  /** 밤: 악 진영 개별 스킬 시간 (4번 섹션 5항) */
-  nightEvilIndividualSkill: 10,
+  /**
+   * 밤: 악 진영 개별 스킬 시간 (4번 섹션 5항 — 저승사자 길동무·구미호 유혹). 10초에서
+   * 15초로 연장 — 선 진영 스킬 창과 같은 이유로 타이머 레이스 완화.
+   */
+  nightEvilIndividualSkill: 15,
   /** 밤: 악 진영 토론 */
   nightEvilDiscussion: 90,
   /**
@@ -58,8 +61,12 @@ export const TIMER_CONFIG = {
   voteReveal: 5,
   /** 낮 투표 확정 직후: 최후의 변론 (처형 대상자 채팅) */
   finalPlea: 20,
-  /** 사망 확정 시: 장화홍련 피 맺힌 유서 대상 선택 */
-  deathJanghwaDecision: 10,
+  /**
+   * 사망 확정 시: 장화홍련 피 맺힌 유서 대상 선택. 10초에서 15초로 연장 — 자청비 스킬 창과
+   * 같은 이유로, 대상 선택 후 확정 클릭까지 걸리는 시간이 막판 서버 타이머와 경합하는
+   * 사례가 있었다.
+   */
+  deathJanghwaDecision: 15,
   /** 사망 확정 시: 조언자 방울 승계/파기 선택 */
   deathAdvisorDecision: 10,
   /** 처형 투표 동표 시: 최다득표자 동시 발언 */
