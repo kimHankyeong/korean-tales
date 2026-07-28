@@ -13,6 +13,7 @@ import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
 import { useRoomStore } from '../store/roomStore';
 import { AdminPuppetPanel } from './AdminPuppetPanel';
+import { ActionErrorToast } from './ActionErrorToast';
 import { AnnouncementToast } from './AnnouncementToast';
 import { VoteResultOverlay } from './VoteResultOverlay';
 import { ChatWindow } from './ChatWindow';
@@ -25,23 +26,25 @@ import { ServerWakeNotice } from './ServerWakeNotice';
 import { SkillBookModal } from './SkillBookModal';
 import { SoundSettingsModal } from './SoundSettingsModal';
 
-/** 스킬 사용으로 취급해 효과음을 재생하는 액션(10번 피드백) — 투표·발언류는 제외 */
-const SKILL_ACTION_TYPES = new Set<ClientGameAction['type']>([
-  'HAETAE_INVESTIGATE',
-  'DOKKAEBI_PRANK',
-  'JEOSEUNG_COMPANION',
-  'GUMIHO_SEDUCE',
-  'FLOWER_REVIVE',
-  'FLOWER_DOOM',
-]);
+// 출마·투표·선택·스킬 사용 등 모든 확정 버튼에서 클릭했다는 청각 피드백을 준다(10번 피드백)
+// 서버가 ACTION_REJECTED를 돌려주면(guard가 조용히 거부한 경우) 토스트로 알려준다 —
+// 예전엔 이런 경우도 성공 ack만 와서 "눌렀는데 반영 안 됨"으로 보였다
+function reportIfRejected(ack: { ok: boolean; error?: string }) {
+  if (!ack.ok && ack.error === 'ACTION_REJECTED') {
+    useGameStore.getState().setActionError('지금은 반영할 수 없어요 — 시간이 지났거나 이미 사용했을 수 있어요');
+  }
+}
 
 function sendAction(action: ClientGameAction) {
-  if (SKILL_ACTION_TYPES.has(action.type)) playSfx('SKILL');
-  void emitWithAck(SOCKET_EVENTS.gameAction, action);
+  playSfx('SKILL');
+  void emitWithAck<{ ok: boolean; error?: string }>(SOCKET_EVENTS.gameAction, action).then(reportIfRejected);
 }
 
 function sendPuppetAction(playerId: string, action: ClientGameAction) {
-  void emitWithAck(SOCKET_EVENTS.adminPuppetAction, { playerId, action });
+  playSfx('SKILL');
+  void emitWithAck<{ ok: boolean; error?: string }>(SOCKET_EVENTS.adminPuppetAction, { playerId, action }).then(
+    reportIfRejected,
+  );
 }
 
 export function GameScreen() {
@@ -150,10 +153,16 @@ export function GameScreen() {
     void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text });
   }
 
+  // 메모장 "채팅으로 보내기"는 본인 개인 발언 시간과 전체 발언(토론) 시간에만 허용한다
+  const memoSendAllowed =
+    store.publicState?.phase === 'day.discussion' ||
+    (store.publicState?.phase === 'day.personalSpeech' && store.publicState.currentSpeakerId === store.myId);
+
   return (
     <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-y-hidden max-md:landscape:overflow-x-auto md:flex-row md:overflow-x-hidden">
       <ServerWakeNotice />
       <AnnouncementToast />
+      <ActionErrorToast />
       <VoteResultOverlay />
 
       <div className="fixed right-4 top-4 z-50 flex gap-1.5">
@@ -172,7 +181,7 @@ export function GameScreen() {
         >
           🔊
         </button>
-        <MemoPanel onSendLine={sendChatText} />
+        <MemoPanel onSendLine={sendChatText} sendAllowed={memoSendAllowed} />
         {!store.gameOverResult && store.publicState && (
           <button
             type="button"
@@ -265,14 +274,14 @@ export function GameScreen() {
           <button
             type="button"
             onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'FORWARD' })}
-            className="pointer-events-auto rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white"
+            className="pointer-events-auto rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white transition active:brightness-75"
           >
             발언 순서: 정순
           </button>
           <button
             type="button"
             onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'REVERSE' })}
-            className="pointer-events-auto rounded-lg border border-amber-500 px-4 py-1.5 text-sm font-bold text-amber-300"
+            className="pointer-events-auto rounded-lg border border-amber-500 px-4 py-1.5 text-sm font-bold text-amber-300 transition active:brightness-75"
           >
             발언 순서: 역순
           </button>
@@ -302,7 +311,7 @@ export function GameScreen() {
               sendAction(prompt.action);
               setActedOnPrompt(true);
             }}
-            className="pointer-events-auto rounded-lg bg-amber-600 px-6 py-2 text-sm font-bold text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50"
+            className="pointer-events-auto rounded-lg bg-amber-600 px-6 py-2 text-sm font-bold text-white shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50 active:brightness-75"
           >
             {prompt.label}
           </button>
@@ -318,7 +327,7 @@ export function GameScreen() {
               sendAction({ type: 'SKIP', playerId: store.myId });
               setActedOnPrompt(true);
             }}
-            className="pointer-events-auto rounded-lg border border-slate-400 bg-slate-900/90 px-6 py-2 text-sm font-bold text-slate-200 shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50"
+            className="pointer-events-auto rounded-lg border border-slate-400 bg-slate-900/90 px-6 py-2 text-sm font-bold text-slate-200 shadow-xl transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50 active:brightness-75"
           >
             {actedOnPrompt ? 'Skip 완료' : 'Skip'}
           </button>
@@ -341,21 +350,22 @@ export function GameScreen() {
                     type="button"
                     disabled={!reviveTargetId}
                     onClick={() => reviveTargetId && sendAction({ type: 'FLOWER_REVIVE', targetId: reviveTargetId })}
-                    className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    className="rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40 active:brightness-75"
                   >
                     부활꽃{!reviveTargetId && ' (대상 없음)'}
                   </button>
                   <button
                     type="button"
+                    disabled={!store.flowerOptions?.doomAvailable}
                     onClick={() => setFlowerMode('DOOM')}
-                    className="rounded-lg border border-red-600 px-4 py-1.5 text-sm font-bold text-red-300"
+                    className="rounded-lg border border-red-600 px-4 py-1.5 text-sm font-bold text-red-300 transition disabled:cursor-not-allowed disabled:opacity-40 active:brightness-75"
                   >
-                    멸망꽃
+                    멸망꽃{!store.flowerOptions?.doomAvailable && ' (사용 불가)'}
                   </button>
                   <button
                     type="button"
                     onClick={() => sendAction({ type: 'FLOWER_PASS' })}
-                    className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300"
+                    className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300 transition active:brightness-75"
                   >
                     패스
                   </button>

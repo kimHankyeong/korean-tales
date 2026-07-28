@@ -72,7 +72,7 @@ function TargetGrid({
 }
 
 export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOptions, onSubmit }: AdminPuppetPanelProps) {
-  const virtualPlayers = roster.filter((p) => p.isVirtual);
+  const virtualPlayers = roster.filter((p) => p.isVirtual).sort((a, b) => a.seat - b.seat);
   const [actingAs, setActingAs] = useState<string | null>(null);
   const [target, setTarget] = useState<string | 'ABSTAIN' | null>(null);
   const [flowerMode, setFlowerMode] = useState<'DOOM' | null>(null);
@@ -83,7 +83,13 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
     active && publicState
       ? resolveActivePrompt(
           publicState,
-          { characterId: active.characterId, faction: active.faction, seat: active.seat, teammateIds: [] },
+          {
+            characterId: active.characterId,
+            faction: active.faction,
+            seat: active.seat,
+            teammateIds: [],
+            mySkillUses: active.skillUses,
+          },
           active.playerId,
           timerPhaseKey,
         )
@@ -140,7 +146,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
             <button
               type="button"
               onClick={() => submit({ type: 'SKIP', playerId: active.playerId })}
-              className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-200 hover:bg-slate-700"
+              className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-200 transition hover:bg-slate-700 active:brightness-75"
             >
               Skip
             </button>
@@ -150,7 +156,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
             <button
               type="button"
               onClick={() => submit(prompt.action)}
-              className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white"
+              className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white transition active:brightness-75"
             >
               {prompt.label}
             </button>
@@ -175,7 +181,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                   type="button"
                   disabled={target === null}
                   onClick={() => target !== null && submit(prompt.buildAction(target))}
-                  className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
+                  className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white transition disabled:opacity-40 active:brightness-75"
                 >
                   {prompt.buttonLabel}
                 </button>
@@ -183,7 +189,7 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                   <button
                     type="button"
                     onClick={() => submit(prompt.forgoAction!)}
-                    className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
+                    className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300 transition active:brightness-75"
                   >
                     스킬 포기
                   </button>
@@ -209,21 +215,22 @@ export function AdminPuppetPanel({ roster, publicState, timerPhaseKey, flowerOpt
                       type="button"
                       disabled={!reviveTargetId}
                       onClick={() => reviveTargetId && submit({ type: 'FLOWER_REVIVE', targetId: reviveTargetId })}
-                      className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white disabled:opacity-40"
+                      className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-bold text-white transition disabled:opacity-40 active:brightness-75"
                     >
                       부활꽃
                     </button>
                     <button
                       type="button"
+                      disabled={!flowerOptions?.doomAvailable}
                       onClick={() => setFlowerMode('DOOM')}
-                      className="rounded-lg border border-red-600 px-3 py-1 text-xs font-bold text-red-300"
+                      className="rounded-lg border border-red-600 px-3 py-1 text-xs font-bold text-red-300 transition disabled:opacity-40 active:brightness-75"
                     >
-                      멸망꽃
+                      멸망꽃{!flowerOptions?.doomAvailable && ' (사용 불가)'}
                     </button>
                     <button
                       type="button"
                       onClick={() => submit({ type: 'FLOWER_PASS' })}
-                      className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300"
+                      className="rounded-lg border border-slate-500 px-3 py-1 text-xs text-slate-300 transition active:brightness-75"
                     >
                       패스
                     </button>

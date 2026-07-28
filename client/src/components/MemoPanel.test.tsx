@@ -10,14 +10,14 @@ afterEach(() => {
 
 describe('메모장 (10번 피드백)', () => {
   it('평소에는 닫혀 있다가, 버튼을 누르면 열린다', () => {
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     expect(screen.queryByRole('dialog', { name: '메모장' })).toBeNull();
     fireEvent.click(screen.getByLabelText('메모장'));
     expect(screen.getByRole('dialog', { name: '메모장' })).toBeTruthy();
   });
 
   it('문장을 입력해 추가하면 목록에 쌓이고, 서버로는 전송되지 않는다(순수 클라이언트 상태)', () => {
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     const input = screen.getByLabelText('메모 입력') as HTMLInputElement;
     fireEvent.change(input, { target: { value: '3번 해태 의심' } });
@@ -30,7 +30,7 @@ describe('메모장 (10번 피드백)', () => {
   it('"보내기" 버튼을 누르면 그 줄만 onSendLine으로 전달된다', () => {
     useGameStore.setState({ memoLines: ['첫째 줄', '둘째 줄'] });
     const onSendLine = vi.fn();
-    render(<MemoPanel onSendLine={onSendLine} />);
+    render(<MemoPanel onSendLine={onSendLine} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     fireEvent.click(screen.getByLabelText('"둘째 줄" 채팅으로 보내기'));
     expect(onSendLine).toHaveBeenCalledWith('둘째 줄');
@@ -41,7 +41,7 @@ describe('메모장 (10번 피드백)', () => {
 
   it('삭제 버튼으로 개별 메모를 지울 수 있다', () => {
     useGameStore.setState({ memoLines: ['지울 메모'] });
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     fireEvent.click(screen.getByLabelText('"지울 메모" 메모 삭제'));
     expect(useGameStore.getState().memoLines).toEqual([]);
@@ -49,7 +49,7 @@ describe('메모장 (10번 피드백)', () => {
 
   it('"수정" 버튼으로 기존 메모 내용을 고칠 수 있다', () => {
     useGameStore.setState({ memoLines: ['원래 문장'] });
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     fireEvent.click(screen.getByLabelText('"원래 문장" 메모 수정하기'));
 
@@ -64,7 +64,7 @@ describe('메모장 (10번 피드백)', () => {
 
   it('수정 중 "취소"를 누르면 내용이 바뀌지 않는다', () => {
     useGameStore.setState({ memoLines: ['그대로 유지'] });
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     fireEvent.click(screen.getByLabelText('"그대로 유지" 메모 수정하기'));
     fireEvent.change(screen.getByLabelText('"그대로 유지" 메모 수정'), { target: { value: '바뀔 뻔' } });
@@ -75,8 +75,19 @@ describe('메모장 (10번 피드백)', () => {
   });
 
   it('언제든(빈 메모 상태에서도) 기입 가능하다는 안내가 표시된다', () => {
-    render(<MemoPanel onSendLine={vi.fn()} />);
+    render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     expect(screen.getByText('아직 메모가 없어요.')).toBeTruthy();
+  });
+
+  it('sendAllowed가 false면 "보내기" 버튼이 비활성화되고 눌러도 전송되지 않는다', () => {
+    useGameStore.setState({ memoLines: ['메모'] });
+    const onSendLine = vi.fn();
+    render(<MemoPanel onSendLine={onSendLine} sendAllowed={false} />);
+    fireEvent.click(screen.getByLabelText('메모장'));
+    const sendButton = screen.getByLabelText('"메모" 채팅으로 보내기') as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(true);
+    fireEvent.click(sendButton);
+    expect(onSendLine).not.toHaveBeenCalled();
   });
 });

@@ -44,7 +44,9 @@ export function GameOverScreen({ result, players, onRestart, onGoLobby }: GameOv
 
       {/* 전체 캐릭터 공개 */}
       <ul className="grid w-full max-w-3xl grid-cols-1 gap-2 sm:grid-cols-3" aria-label="역할 공개">
-        {result.roles.map((role, i) => {
+        {[...result.roles]
+          .sort((a, b) => (nameOf(a.playerId)?.seat ?? 0) - (nameOf(b.playerId)?.seat ?? 0))
+          .map((role, i) => {
           const player = nameOf(role.playerId);
           const character = CHARACTER_BY_ID[role.characterId];
           return (

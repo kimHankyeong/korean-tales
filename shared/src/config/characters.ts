@@ -10,6 +10,7 @@ import type {
   FactionMeta,
   GameCharacter,
   InvestigationResult,
+  SkillId,
 } from '../characters/characterModel';
 import { TIMER_CONFIG } from './gameConfig';
 
@@ -299,6 +300,22 @@ export const CHARACTERS: readonly GameCharacter[] = [
 export const CHARACTER_BY_ID: Record<CharacterId, GameCharacter> = Object.fromEntries(
   CHARACTERS.map((c) => [c.id, c]),
 ) as Record<CharacterId, GameCharacter>;
+
+/**
+ * 캐릭터 정의(uses)를 기준으로 스킬 사용 가능 여부 판정 — server/game/logic.ts의
+ * canUseSkill과 동일한 로직의 단일 원본. client는 이걸로 "다 소모된 스킬 버튼 숨김"을
+ * 판단하고, server는 GamePlayer를 감싸는 자체 canUseSkill에서 이 함수를 재사용한다.
+ */
+export function canUseSkill(
+  characterId: CharacterId,
+  skillUses: Partial<Record<SkillId, number>>,
+  skillId: SkillId,
+): boolean {
+  const skill = CHARACTER_BY_ID[characterId].skills.find((s) => s.id === skillId);
+  if (!skill) return false;
+  const used = skillUses[skillId] ?? 0;
+  return skill.uses === 'UNLIMITED' || used < skill.uses;
+}
 
 /* ── 공통 규칙 (3번 섹션 체크박스 등) ──────────────── */
 

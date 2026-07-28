@@ -6,9 +6,9 @@ import { AdminPuppetPanel } from './AdminPuppetPanel';
 afterEach(cleanup);
 
 const roster: AdminRosterPayload['players'] = [
-  { playerId: 'u1', name: '방장', isVirtual: false, characterId: 'haetae', faction: 'GOOD', seat: 1, alive: true },
-  { playerId: 'virtual:1', name: '가상플레이어1', isVirtual: true, characterId: 'dokkaebi', faction: 'GOOD', seat: 2, alive: true },
-  { playerId: 'virtual:2', name: '가상플레이어2', isVirtual: true, characterId: 'jeoseung', faction: 'EVIL', seat: 3, alive: true },
+  { playerId: 'u1', name: '방장', isVirtual: false, characterId: 'haetae', faction: 'GOOD', seat: 1, alive: true, skillUses: {} },
+  { playerId: 'virtual:1', name: '가상플레이어1', isVirtual: true, characterId: 'dokkaebi', faction: 'GOOD', seat: 2, alive: true, skillUses: {} },
+  { playerId: 'virtual:2', name: '가상플레이어2', isVirtual: true, characterId: 'jeoseung', faction: 'EVIL', seat: 3, alive: true, skillUses: {} },
 ];
 
 const votePhaseState: PublicGameState = {
@@ -84,9 +84,9 @@ describe('관리자 가상 플레이어 조작 패널 (13번)', () => {
 
   it('부활꽃 버튼과 함께 "n번을 살리시겠습니까?" 문구가 뜨고, 부활꽃을 누르면 곧바로 그 대상으로 제출된다', () => {
     const nightRoster: AdminRosterPayload['players'] = [
-      { playerId: 'u1', name: '방장', isVirtual: false, characterId: 'haetae', faction: 'GOOD', seat: 1, alive: true },
-      { playerId: 'virtual:1', name: '가상플레이어1', isVirtual: true, characterId: 'jacheongbi', faction: 'GOOD', seat: 2, alive: true },
-      { playerId: 'virtual:2', name: '가상플레이어2', isVirtual: true, characterId: 'jeoseung', faction: 'EVIL', seat: 3, alive: true },
+      { playerId: 'u1', name: '방장', isVirtual: false, characterId: 'haetae', faction: 'GOOD', seat: 1, alive: true, skillUses: {} },
+      { playerId: 'virtual:1', name: '가상플레이어1', isVirtual: true, characterId: 'jacheongbi', faction: 'GOOD', seat: 2, alive: true, skillUses: {} },
+      { playerId: 'virtual:2', name: '가상플레이어2', isVirtual: true, characterId: 'jeoseung', faction: 'EVIL', seat: 3, alive: true, skillUses: {} },
     ];
     const nightState: PublicGameState = { ...votePhaseState, phase: 'night.goodSkills' };
     const onSubmit = vi.fn();
@@ -95,7 +95,7 @@ describe('관리자 가상 플레이어 조작 패널 (13번)', () => {
         roster={nightRoster}
         publicState={nightState}
         timerPhaseKey={null}
-        flowerOptions={{ revivableTargetIds: ['virtual:2'] }}
+        flowerOptions={{ revivableTargetIds: ['virtual:2'], doomAvailable: true }}
         onSubmit={onSubmit}
       />,
     );

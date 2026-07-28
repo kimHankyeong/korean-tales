@@ -10,7 +10,7 @@
  * - 역할 전체 공개는 게임 종료(gameOver) 시에만
  */
 
-import type { CharacterId, Faction, InvestigationResult } from '../characters/characterModel';
+import type { CharacterId, Faction, InvestigationResult, SkillId } from '../characters/characterModel';
 import type { RoomTimerSettings } from '../config/gameConfig';
 import type { PlayerMode } from '../config/roster';
 
@@ -142,6 +142,12 @@ export interface GameRolePayload {
    * 선/중립에게는 항상 빈 배열.
    */
   teammateIds: string[];
+  /**
+   * 본인의 스킬별 사용 횟수 — 평생 사용 횟수가 정해진 스킬(도깨비 장난·저승길 동무·구미호
+   * 유혹·자청비 부활꽃/멸망꽃 등)을 다 썼으면 클라이언트가 그 버튼 자체를 숨기는 데 쓴다.
+   * 값이 바뀔 때마다(스킬 사용 시) room이 game:role을 다시 보내 갱신한다.
+   */
+  mySkillUses: Partial<Record<SkillId, number>>;
 }
 
 export interface PublicPlayerState {
@@ -186,6 +192,12 @@ export interface InvestigationPayload {
  */
 export interface FlowerOptionsPayload {
   revivableTargetIds: string[];
+  /**
+   * 멸망꽃을 지금 쓸 수 있는지 — 게임당 1회 소모됐거나, 같은 밤에 부활꽃을 이미
+   * 선택해 상호배타 규칙에 걸리면 false. 클라이언트가 버튼을 비활성화하고 이유를
+   * 보여주는 데 쓴다(그렇지 않으면 서버 guard가 조용히 거부해 "안 눌린다"로 보임)
+   */
+  doomAvailable: boolean;
 }
 
 /** 게임 종료 시에만 역할 전체 공개 + 개인별 승패 귀속 */
@@ -241,6 +253,8 @@ export interface AdminRosterEntry {
   faction: Faction;
   seat: number;
   alive: boolean;
+  /** 관리자가 대신 조작할 때도 소진된 스킬 버튼을 숨길 수 있도록 — game:role.mySkillUses와 동일 */
+  skillUses: Partial<Record<SkillId, number>>;
 }
 
 export interface AdminRosterPayload {

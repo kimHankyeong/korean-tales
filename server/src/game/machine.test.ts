@@ -656,6 +656,33 @@ describe('승리 판정 (requirements 8번)', () => {
     expect(snap.context.winner).toBe('EVIL'); // 선 진영은 대부분 생존 중이었음에도 즉시 악 승리
   });
 
+  it('낮에 까치선비가 처형되어 연민 부활이 예약된 뒤, 같은 밤 바리공주가 죽어도 다음 새벽 까치선비가 중립으로 부활해 게임이 계속된다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // 토론 → 투표
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p8'), 'p8'); // 까치선비(p8) 처형
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 변론
+    timeUp(actor); // → 처형 → 사망 처리(연민 자동 예약) → 밤
+    expect(player(actor, 'p8').alive).toBe(false);
+    expect(actor.getSnapshot().context.scheduledRevivals).toEqual(['p8']);
+    expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
+
+    timeUp(actor); // evilDiscussion → evilVote
+    actor.send({ type: 'EVIL_KILL_VOTE', voterId: 'p1', targetId: 'p9' }); // 바리공주(p9) 킬 지정
+    timeUp(actor); // evilVote → evilSkills
+    timeUp(actor); // evilSkills → goodSkills
+    timeUp(actor); // goodSkills → dawn: 예약 부활이 밤 킬 판정보다 먼저 반영됨
+
+    const snap = actor.getSnapshot();
+    expect(player(actor, 'p8').alive).toBe(true); // 예약된 부활은 바리공주의 사망과 무관하게 실행
+    expect(player(actor, 'p8').faction).toBe('NEUTRAL');
+    expect(player(actor, 'p9').alive).toBe(false);
+    expect(snap.status).toBe('active'); // 중립 전멸이 아니므로 게임 계속
+    expect(snap.context.winner).toBeNull();
+  });
+
   it('악 진영 전원 탈락 시 즉시 게임 종료 — 선 진영 승리', () => {
     const actor = startGame();
     skipElection(actor);

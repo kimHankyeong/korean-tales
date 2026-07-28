@@ -33,6 +33,19 @@ describe('플레이어 목록 — 조언자 지팡이 표시', () => {
   });
 });
 
+describe('플레이어 목록 — 좌석 번호 순 정렬', () => {
+  it('입력 순서와 무관하게 좌석 번호 오름차순으로 나열된다', () => {
+    const shuffled: PublicPlayerState[] = [
+      { id: 'p9', name: '아홉', seat: 9, alive: true, avatarUrl: null },
+      { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: null },
+      { id: 'p5', name: '다섯', seat: 5, alive: true, avatarUrl: null },
+    ];
+    render(<PlayerListPanel players={shuffled} />);
+    const seats = screen.getAllByText(/^\d+번$/).map((el) => el.textContent);
+    expect(seats).toEqual(['2번', '5번', '9번']);
+  });
+});
+
 describe('플레이어 목록 — 악 진영 팀원 강조 (3번 피드백)', () => {
   it('teammateIds에 포함된 플레이어의 닉네임만 빨갛게 표시된다', () => {
     render(<PlayerListPanel players={players} teammateIds={['p2']} />);

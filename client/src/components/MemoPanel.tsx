@@ -7,7 +7,14 @@
 import { useState } from 'react';
 import { useGameStore } from '../store/gameStore';
 
-export function MemoPanel({ onSendLine }: { onSendLine: (text: string) => void }) {
+export function MemoPanel({
+  onSendLine,
+  sendAllowed,
+}: {
+  onSendLine: (text: string) => void;
+  /** 본인 개인 발언 시간·전체 발언(토론) 시간에만 "채팅으로 보내기"를 허용한다 */
+  sendAllowed: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -126,10 +133,11 @@ export function MemoPanel({ onSendLine }: { onSendLine: (text: string) => void }
                     <span className="min-w-0 flex-1 break-words text-sm text-slate-100">{line}</span>
                     <button
                       type="button"
+                      disabled={!sendAllowed}
                       onClick={() => onSendLine(line)}
                       aria-label={`"${line}" 채팅으로 보내기`}
-                      title="채팅으로 보내기"
-                      className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600"
+                      title={sendAllowed ? '채팅으로 보내기' : '내 개인 발언 시간·전체 발언 시간에만 보낼 수 있어요'}
+                      className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-sky-700/80"
                     >
                       보내기
                     </button>

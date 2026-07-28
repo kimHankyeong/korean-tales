@@ -649,6 +649,49 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     const over = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameOver);
     expect((over[0]!.payload as GameOverPayload).winner).toBe('EVIL');
   });
+
+  it('머신 guard가 조용히 거부하는 액션은 ACTION_REJECTED를 반환한다 — 예전엔 성공 ack만 보내 "눌렀는데 반영 안 됨"으로 보였다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const jacheongbiId = ids.find((id) => roles[id]!.characterId === 'jacheongbi')!;
+    const session = room.session!;
+    session.send({ type: 'TIME_UP' }); // evilDiscussion → evilVote
+    session.send({ type: 'TIME_UP' }); // evilVote → evilSkills
+    session.send({ type: 'TIME_UP' }); // evilSkills → goodSkills
+    const targetId = ids.find((id) => id !== jacheongbiId)!;
+    // isActionAllowed는 캐릭터(자청비)만 확인해 통과하지만, 같은 밤에 멸망꽃을 이미 썼으면
+    // 머신 guard(validRevive의 doomUsedTonight 체크)가 부활꽃을 거부해야 한다(상호배타)
+    expect(room.handleAction(jacheongbiId, { type: 'FLOWER_DOOM', targetId })).toBeNull();
+    const result = room.handleAction(jacheongbiId, { type: 'FLOWER_REVIVE', targetId });
+    expect(result).toBe('ACTION_REJECTED');
+  });
+
+  it('FLOWER_PASS는 상태 전이가 없어도 항상 성공으로 취급된다 (의도된 무전이)', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    const jacheongbiId = ids.find((id) => roles[id]!.characterId === 'jacheongbi')!;
+    room.session!.send({ type: 'TIME_UP' }); // evilDiscussion → evilVote
+    room.session!.send({ type: 'TIME_UP' }); // evilVote → evilSkills
+    room.session!.send({ type: 'TIME_UP' }); // evilSkills → goodSkills
+    const result = room.handleAction(jacheongbiId, { type: 'FLOWER_PASS' });
+    expect(result).toBeNull();
+  });
+
+  it('FORFEIT이 게임을 즉시 끝내도(세션이 send 도중 null이 되어도) 크래시 없이 정상 반환한다', () => {
+    const { room, emitter } = makeRoom();
+    const { roles, ids } = startAndGoNight(room, emitter);
+    // 악 진영 전원이 나가면 즉시 선 진영 승리로 게임이 끝난다 — send() 도중 동기적으로
+    // endSession()이 실행돼 room.session이 null이 되는 경로를 검증한다
+    const evilIds = ids.filter((id) => roles[id]!.faction === 'EVIL');
+    let lastResult: ReturnType<typeof room.handleAction> = 'NOT_ALLOWED';
+    for (const id of evilIds) {
+      lastResult = room.handleAction(id, { type: 'FORFEIT', playerId: id });
+    }
+    expect(lastResult).toBeNull();
+    expect(room.session).toBeNull();
+    const over = emitter.roomEvents.filter((e) => e.event === SOCKET_EVENTS.gameOver);
+    expect((over[0]!.payload as GameOverPayload).winner).toBe('GOOD');
+  });
 });
 
 describe('RoomManager', () => {

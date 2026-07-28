@@ -40,8 +40,12 @@ export const TIMER_CONFIG = {
   nightEvilIndividualSkill: 10,
   /** 밤: 악 진영 토론 */
   nightEvilDiscussion: 90,
-  /** 밤: 선 진영 전체 스킬 결정 (해태·도깨비·자청비 부활꽃/멸망꽃 — 4번 섹션, 동시 진행) */
-  nightGoodSkillDecision: 10,
+  /**
+   * 밤: 선 진영 전체 스킬 결정 (해태·도깨비·자청비 부활꽃/멸망꽃 — 4번 섹션, 동시 진행).
+   * 10초에서 15초로 연장 — 특히 자청비의 멸망꽃은 대상 선택창을 한 번 더 거쳐야 해서
+   * 막판에 서버 타이머와 클라이언트 클릭이 경합하는 사례가 있었다.
+   */
+  nightGoodSkillDecision: 15,
   /** 밤: 도깨비 스킬 결정 */
   nightDokkaebiDecision: 10,
   /** 투표 시간 */

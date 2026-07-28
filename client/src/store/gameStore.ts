@@ -27,6 +27,7 @@ let nextMessageId = 1;
 const messageId = () => `m${nextMessageId++}`;
 let nextAnnouncementId = 1;
 let nextVoteResultId = 1;
+let nextActionErrorId = 1;
 
 export interface GameUiState {
   myId: string;
@@ -79,6 +80,12 @@ export interface GameUiState {
    * id는 announcement와 같은 이유로 같은 내용이 연속으로 와도 타이머를 새로 걸기 위한 값.
    */
   voteResult: { id: number; votes: Record<string, string>; durationMs: number } | null;
+  /**
+   * 게임 액션이 서버 상태머신 guard에 조용히 거부됐을 때(ACTION_REJECTED) 짧게 보여줄
+   * 오류 토스트 — 예전엔 아무 표시 없이 그냥 아무 일도 안 일어나 "눌렀는데 반영 안 됨"으로
+   * 보였다. id는 같은 문구가 연속으로 와도 타이머를 새로 걸기 위한 값.
+   */
+  actionError: { id: number; text: string } | null;
 
   setMyId(id: string): void;
   setMyProfile(profile: { nickname: string; profileImageUrl: string | null }): void;
@@ -105,6 +112,9 @@ export interface GameUiState {
   /** 화면 중앙 발표 문구 표시(4초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
   setAnnouncement(text: string, durationMs?: number): void;
   clearAnnouncement(): void;
+  /** 액션 반려 토스트 표시(2.5초 뒤 자동으로 사라짐 — 실제 타이머는 컴포넌트가 관리) */
+  setActionError(text: string): void;
+  clearActionError(): void;
   applyVoteResult(payload: VoteResultPayload): void;
   clearVoteResult(): void;
 
@@ -156,6 +166,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   memoLines: [],
   announcement: null,
   voteResult: null,
+  actionError: null,
 
   setMyId: (id) => set({ myId: id }),
 
@@ -213,6 +224,9 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   setAnnouncement: (text, durationMs = 4000) =>
     set({ announcement: { id: nextAnnouncementId++, text, durationMs } }),
   clearAnnouncement: () => set({ announcement: null }),
+
+  setActionError: (text) => set({ actionError: { id: nextActionErrorId++, text } }),
+  clearActionError: () => set({ actionError: null }),
 
   applyVoteResult: (payload) =>
     set({

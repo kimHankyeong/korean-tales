@@ -9,7 +9,7 @@
  * 발언자 id를 담고 있어 timer:sync의 phaseKey로 판별한다.
  */
 
-import type { ClientGameAction, GameRolePayload, PublicGameState } from '@korean-tales/shared';
+import { canUseSkill, type ClientGameAction, type GameRolePayload, type PublicGameState } from '@korean-tales/shared';
 
 export type ActivePrompt =
   | {
@@ -136,6 +136,8 @@ export function resolveActivePrompt(
         };
       }
       if (myRole?.characterId === 'dokkaebi') {
+        // 보호 성공으로 영구 소모됐으면(uses:1) 더 이상 지정할 게 없다 — 버튼 자체를 숨긴다
+        if (!canUseSkill('dokkaebi', myRole.mySkillUses, 'prank')) return null;
         return {
           kind: 'SELECT',
           title: '도깨비 장난 — 보호할 사람',
@@ -158,6 +160,8 @@ export function resolveActivePrompt(
 
     case 'night.evilSkills':
       if (myRole?.characterId === 'jeoseung') {
+        // 저승길 동무는 게임당 2회 — 다 썼으면 버튼을 숨긴다
+        if (!canUseSkill('jeoseung', myRole.mySkillUses, 'companion')) return null;
         return {
           kind: 'SELECT',
           title: '길동무 — 함께 데려갈 사람',
@@ -167,6 +171,8 @@ export function resolveActivePrompt(
         };
       }
       if (myRole?.characterId === 'gumiho') {
+        // 유혹은 게임당 1회 — 다 썼으면 버튼을 숨긴다
+        if (!canUseSkill('gumiho', myRole.mySkillUses, 'seduce')) return null;
         return { kind: 'BUTTON', label: '유혹하기', action: { type: 'GUMIHO_SEDUCE' } };
       }
       return null;

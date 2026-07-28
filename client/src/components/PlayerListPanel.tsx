@@ -32,7 +32,7 @@ export function PlayerListPanel({
       aria-label="플레이어 목록"
       className="grid w-full shrink-0 grid-cols-2 gap-1 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-2 landscape:flex landscape:w-48 landscape:min-w-40 landscape:flex-col md:flex md:w-[16.7vw] md:min-w-40 md:flex-col"
     >
-      {players.map((p) => (
+      {[...players].sort((a, b) => a.seat - b.seat).map((p) => (
         <div
           key={p.id}
           className={`flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 ${p.alive ? '' : 'opacity-45'}`}

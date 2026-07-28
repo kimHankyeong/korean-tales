@@ -30,6 +30,7 @@ import {
 } from '@korean-tales/shared';
 import { isActionAllowed } from '../game/actionAuth';
 import { assignCharacters, shuffle } from '../game/assign';
+import { canUseSkill } from '../game/logic';
 import { buildGameResult, phasePath, toPublicGameState } from '../game/publicState';
 import { GameSession, type GameSnapshot } from '../game/session';
 import { PhaseTimer } from '../game/timer';
@@ -70,7 +71,13 @@ export type RoomError =
   | 'NOT_ENOUGH_PLAYERS'
   | 'NOT_IN_ROOM'
   | 'NOT_ALLOWED'
-  | 'INVALID_CHARACTER';
+  | 'INVALID_CHARACTER'
+  /**
+   * 신원 검증(isActionAllowed)은 통과했지만 상태머신 guard가 실제로는 거부한 경우 —
+   * 이미 스킬을 다 썼거나, 타이머가 막판에 만료돼 그 페이즈를 벗어난 뒤 도착한 경우 등.
+   * 예전엔 이런 경우도 조용히 {ok:true}를 보내 "눌렀는데 반영이 안 된" 것처럼 보였다.
+   */
+  | 'ACTION_REJECTED';
 
 export interface SurrenderState {
   faction: Faction;
@@ -103,6 +110,12 @@ export class Room {
   private lastInvestigation: InvestigationRecord | null = null;
   private lastAnnouncement: { text: string; durationMs: number } | null = null;
   private lastVoteResult: Record<string, string> | null = null;
+  /**
+   * 각 플레이어 본인의 마지막으로 통보한 skillUses 참조 — 바뀐 사람에게만 game:role을
+   * 다시 보내 "소진된 스킬 버튼 숨김"을 갱신한다(markSkillUsed는 매번 새 객체를 만들므로
+   * 참조 동일성으로 변화 여부를 판별할 수 있다)
+   */
+  private readonly lastSkillUsesByPlayer = new Map<string, GamePlayer['skillUses']>();
   /** 관리자가 정원을 채우려고 만든 가상 플레이어 id들 (13번 — 실제 소켓 없음, 관리자가 대신 조작) */
   private readonly virtualPlayerIds = new Set<string>();
   private virtualCounter = 0;
@@ -351,7 +364,10 @@ export class Room {
         faction: gp.faction,
         seat: gp.seat,
         teammateIds: this.evilTeammateIds(gamePlayers, gp),
+        mySkillUses: gp.skillUses,
       });
+      // onSnapshot의 스킬 사용량 변화 감지가 방금 보낸 걸 중복으로 다시 보내지 않도록 미리 기록
+      this.lastSkillUsesByPlayer.set(gp.id, gp.skillUses);
     }
 
     // session.start()가 onSnapshot을 1회 호출하며 broadcastAdminRoster까지 함께 처리한다
@@ -396,6 +412,7 @@ export class Room {
         faction: p.faction,
         seat: p.seat,
         alive: p.alive,
+        skillUses: p.skillUses,
       })),
     });
   }
@@ -411,10 +428,20 @@ export class Room {
     const jacheongbi = snapshot.context.players.find((p) => p.characterId === 'jacheongbi');
     if (!jacheongbi?.alive) return;
     if (onlyToPlayerId && jacheongbi.id !== onlyToPlayerId) return;
-    const revivableTargetIds = snapshot.context.nightKillTargetId ? [snapshot.context.nightKillTargetId] : [];
-    this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+    // validRevive 가드와 동일한 조건(machine.ts) — 부활꽃을 이미 다 썼거나 같은 밤 멸망꽃을
+    // 먼저 썼으면 후보가 있어도 더 이상 대상이 아니다
+    const revivableTargetIds =
+      snapshot.context.nightKillTargetId &&
+      canUseSkill(jacheongbi, 'revival-flower') &&
+      !snapshot.context.doomUsedTonight
+        ? [snapshot.context.nightKillTargetId]
+        : [];
+    // validDoom 가드와 동일한 조건(machine.ts) — 게임당 1회 소모 또는 같은 밤 부활꽃 선택 시 차단
+    const doomAvailable = canUseSkill(jacheongbi, 'doom-flower') && snapshot.context.reviveTargetId === null;
+    const payload = { revivableTargetIds, doomAvailable };
+    this.emitter.toPlayer(jacheongbi.id, SOCKET_EVENTS.gameFlowerOptions, payload);
     if (this.virtualPlayerIds.has(jacheongbi.id) && this.adminPlayerId) {
-      this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameFlowerOptions, { revivableTargetIds });
+      this.emitter.toPlayer(this.adminPlayerId, SOCKET_EVENTS.gameFlowerOptions, payload);
     }
   }
 
@@ -434,6 +461,7 @@ export class Room {
         faction: gp.faction,
         seat: gp.seat,
         teammateIds: this.evilTeammateIds(snapshot.context.players, gp),
+        mySkillUses: gp.skillUses,
       });
     }
     this.emitter.toPlayer(playerId, SOCKET_EVENTS.gameState, toPublicGameState(snapshot, this.playerMeta()));
@@ -459,6 +487,20 @@ export class Room {
       }
     }
     this.lastInvestigation = investigation;
+
+    // 스킬 사용량 변화 — 본인에게만 game:role을 다시 보내 "다 소모된 스킬 버튼 숨김"을
+    // 최신 상태로 유지한다(markSkillUsed는 새 skillUses 객체를 만들므로 참조 비교로 충분)
+    for (const gp of snapshot.context.players) {
+      if (this.lastSkillUsesByPlayer.get(gp.id) === gp.skillUses) continue;
+      this.lastSkillUsesByPlayer.set(gp.id, gp.skillUses);
+      this.emitter.toPlayer(gp.id, SOCKET_EVENTS.gameRole, {
+        characterId: gp.characterId,
+        faction: gp.faction,
+        seat: gp.seat,
+        teammateIds: this.evilTeammateIds(snapshot.context.players, gp),
+        mySkillUses: gp.skillUses,
+      });
+    }
 
     // 화면 중앙 발표 문구 — 길동무 동반 사망·유서 대상 지목·구미호 유혹 등 공개되는 순간
     // 방 전체에 1회 중계. 객체 참조 동일성으로 "새 발표인지" 판별한다(logic.ts/machine.ts가
@@ -522,6 +564,7 @@ export class Room {
     this.session?.stop();
     this.session = null;
     this.lastInvestigation = null;
+    this.lastSkillUsesByPlayer.clear();
     this.surrenderTimer.cancel();
     this.surrender = null;
     // 가상 플레이어는 실제 사람이 아니므로 게임이 끝나면 로비에서 제거한다 —
@@ -542,10 +585,10 @@ export class Room {
   /* ── 게임 액션 (권한 검증 후 머신 주입) ─────────── */
 
   handleAction(senderId: string, action: ClientGameAction): RoomError | null {
-    if (!this.session) return 'NOT_IN_ROOM';
-    if (!isActionAllowed(senderId, action, this.session.getSnapshot())) return 'NOT_ALLOWED';
-    this.session.send(action);
-    return null;
+    const session = this.session;
+    if (!session) return 'NOT_IN_ROOM';
+    if (!isActionAllowed(senderId, action, session.getSnapshot())) return 'NOT_ALLOWED';
+    return this.sendGameAction(session, action);
   }
 
   /**
@@ -554,11 +597,37 @@ export class Room {
    * (본인 명의 강제·캐릭터 전용 스킬 등 검증이 자동으로 그 가상 플레이어 기준으로 적용됨).
    */
   handlePuppetAction(isAdmin: boolean, targetPlayerId: string, action: ClientGameAction): RoomError | null {
-    if (!this.session) return 'NOT_IN_ROOM';
+    const session = this.session;
+    if (!session) return 'NOT_IN_ROOM';
     if (!isAdmin || !this.virtualPlayerIds.has(targetPlayerId)) return 'NOT_ALLOWED';
-    if (!isActionAllowed(targetPlayerId, action, this.session.getSnapshot())) return 'NOT_ALLOWED';
-    this.session.send(action);
-    return null;
+    if (!isActionAllowed(targetPlayerId, action, session.getSnapshot())) return 'NOT_ALLOWED';
+    return this.sendGameAction(session, action);
+  }
+
+  /**
+   * 상태머신에 이벤트를 주입하고, 실제로 반영됐는지 스냅샷 참조 동일성으로 판정한다.
+   * isActionAllowed(신원 검증)는 통과했더라도, 페이즈·사용 횟수 등 세부 유효성은 머신
+   * guard가 다시 검증하는데, 예전엔 guard가 거부해도 조용히 성공 ack를 보내 "눌렀는데
+   * 반영이 안 된" 것처럼 보이는 버그가 있었다(자청비 부활꽃/멸망꽃, 장화홍련 유서 등에서
+   * 제보됨 — 이미 스킬을 다 썼거나, 막판에 타이머가 만료돼 그 페이즈를 벗어난 뒤 도착한 경우).
+   * 아무 전이도 없으면 XState가 완전히 동일한 스냅샷 객체를 반환하므로, 참조 비교만으로
+   * 액션 종류별 특수 처리 없이 일반적으로 판별할 수 있다.
+   * FLOWER_PASS만 예외 — "다른 스킬 창이 아직 열려 있을 수 있어 상태 전이 없음"이 의도된
+   * 설계라 항상 성공으로 취급한다.
+   *
+   * session은 호출부에서 이미 null 체크를 거친 지역 참조를 그대로 받는다 — action이 게임을
+   * 끝내버리면(FORFEIT 등) send() 도중 동기적으로 endSession()이 실행돼 this.session이
+   * null이 될 수 있으므로, this.session을 다시 읽지 않고 이 지역 참조로만 이어서 조회한다.
+   */
+  private sendGameAction(session: GameSession, action: ClientGameAction): RoomError | null {
+    if (action.type === 'FLOWER_PASS') {
+      session.send(action);
+      return null;
+    }
+    const before = session.getSnapshot();
+    session.send(action);
+    const after = session.getSnapshot();
+    return before === after ? 'ACTION_REJECTED' : null;
   }
 
   /* ── 채팅 (채널 스코프) ────────────────────────── */

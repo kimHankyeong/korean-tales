@@ -110,7 +110,7 @@ export function SelectionPanel({
             type="button"
             disabled={selected === null}
             onClick={() => selected !== null && onConfirm(selected)}
-            className="rounded-lg bg-amber-600 px-6 py-1.5 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg bg-amber-600 px-6 py-1.5 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40 active:brightness-75"
           >
             {buttonLabel}
           </button>
@@ -118,7 +118,7 @@ export function SelectionPanel({
             <button
               type="button"
               onClick={() => onForgo?.()}
-              className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300 hover:bg-slate-700"
+              className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300 transition hover:bg-slate-700 active:brightness-75"
             >
               스킬 포기
             </button>

@@ -7,7 +7,7 @@
  */
 
 import type { DeathCause, Faction, InvestigationResult, SkillId } from '@korean-tales/shared';
-import { CHARACTER_BY_ID } from '@korean-tales/shared';
+import { CHARACTER_BY_ID, canUseSkill as canUseSkillShared } from '@korean-tales/shared';
 import type {
   AwaitingTrigger,
   DeathTriggerKind,
@@ -29,12 +29,9 @@ export function aliveOfFaction(players: readonly GamePlayer[], faction: Faction)
   return alivePlayers(players).filter((p) => p.faction === faction);
 }
 
-/** 캐릭터 정의(shared)의 uses 제한을 기준으로 스킬 사용 가능 여부 판정 */
+/** 캐릭터 정의(shared)의 uses 제한을 기준으로 스킬 사용 가능 여부 판정 — shared의 단일 원본을 재사용 */
 export function canUseSkill(player: GamePlayer, skillId: SkillId): boolean {
-  const skill = CHARACTER_BY_ID[player.characterId].skills.find((s) => s.id === skillId);
-  if (!skill) return false;
-  const used = player.skillUses[skillId] ?? 0;
-  return skill.uses === 'UNLIMITED' || used < skill.uses;
+  return canUseSkillShared(player.characterId, player.skillUses, skillId);
 }
 
 export function markSkillUsed(players: readonly GamePlayer[], playerId: string, skillId: SkillId): GamePlayer[] {

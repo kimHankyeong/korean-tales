@@ -107,7 +107,7 @@ stateDiagram-v2
 | 처형 투표(재투표 포함) 결과 공개 — 끝나야 다음 단계로 진행 | 5초 | `voteReveal` |
 | 동표 동시 발언 | 20초 | `tieSpeech` |
 | 최후의 변론 | 20초 | `finalPlea` |
-| 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 10초 / 10초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |
+| 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 15초 / 10초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |
 | 악 토론 | 90초 | `nightEvilDiscussion` |
 | 피 맺힌 유서 / 방울 승계 | 10초 / 10초 | `deathJanghwaDecision`·`deathAdvisorDecision` |
 | dawn·advance(통과)·gameOver | 없음 | — |
