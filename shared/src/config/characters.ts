@@ -54,7 +54,7 @@ export const CHARACTERS: readonly GameCharacter[] = [
     skills: [
       {
         id: 'companion',
-        name: '저승길 동무',
+        name: '사자의 명부',
         uses: 2,
         isPassive: false,
         timing: 'NIGHT',
@@ -138,7 +138,7 @@ export const CHARACTERS: readonly GameCharacter[] = [
         revivableCauses: ['EVIL_NIGHT_KILL'],
         description: '그날 밤 악 진영의 킬로 사망한 사람만 되살릴 수 있다(치유).',
         notes: [
-          '제외 대상: 저승길 동무·피 맺힌 유서로 동반 사망한 사람, 낮 투표 처형자.',
+          '제외 대상: 사자의 명부·피 맺힌 유서로 동반 사망한 사람, 낮 투표 처형자.',
           '그날 밤 악 진영 킬 사망자가 있을 때만 활성화.',
           '되살아난 사람이 이미 사용한 1회성 스킬은 소모된 상태로 유지된다 (복구 없음).',
         ],
@@ -289,7 +289,7 @@ export const CHARACTERS: readonly GameCharacter[] = [
         revivableCauses: 'ANY',
         description: '까치선비가 어떤 방식으로 사망하든 되살릴 수 있다 (자동 발동).',
         notes: [
-          '저승길 동무·피 맺힌 유서 동반 사망 등 부활꽃이 닿지 않는 죽음에도 예외적으로 적용.',
+          '사자의 명부·피 맺힌 유서 동반 사망 등 부활꽃이 닿지 않는 죽음에도 예외적으로 적용.',
           '낮 사망이면 당일 아침, 그 외에는 다음날 아침 자동 부활. 부활한 까치선비는 중립으로 전환.',
         ],
       },

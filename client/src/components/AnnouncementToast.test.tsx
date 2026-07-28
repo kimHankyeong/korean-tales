@@ -21,11 +21,11 @@ describe('AnnouncementToast — 화면 중앙 4초 발표 문구 (13번)', () =>
 
   it('announcement가 설정되면 문구가 표시되고, 4초 후 자동으로 사라진다', () => {
     render(<AnnouncementToast />);
-    act(() => useGameStore.getState().setAnnouncement('저승사자가 길동무로 3번을 선택했습니다'));
-    expect(screen.getByText('저승사자가 길동무로 3번을 선택했습니다')).toBeTruthy();
+    act(() => useGameStore.getState().setAnnouncement('저승사자가 사자의 명부에 3번을 적었습니다'));
+    expect(screen.getByText('저승사자가 사자의 명부에 3번을 적었습니다')).toBeTruthy();
 
     act(() => vi.advanceTimersByTime(4000));
-    expect(screen.queryByText('저승사자가 길동무로 3번을 선택했습니다')).toBeNull();
+    expect(screen.queryByText('저승사자가 사자의 명부에 3번을 적었습니다')).toBeNull();
   });
 
   it('같은 문구가 다시 와도(id가 새로 부여되어) 4초 타이머가 새로 걸린다', () => {

@@ -57,7 +57,7 @@ stateDiagram-v2
         [*] --> evilDiscussion
         evilDiscussion: 악 진영 토론 (90초)\n악 생존자 전원 Skip 시 조기 종료
         evilVote: 악 처치 투표 (10초)\n무투표 → 킬 없음\n대상 확정(nightKillTargetId)
-        evilSkills: 악 개별 스킬 (15초)\n저승사자 길동무 / 구미호 유혹
+        evilSkills: 악 개별 스킬 (15초)\n저승사자 사자의 명부 / 구미호 유혹
         goodSkills: 해태 투사 / 도깨비 장난 / 자청비 부활꽃·멸망꽃 (10초, 동시)\n자청비는 nightKillTargetId만 부활 후보\n(도깨비 보호 여부는 아직 모름) — 부활꽃/멸망꽃 동시 사용 불가\n조언자 발언 방향(역/정순) 결정 가능
         dawn: 새벽 (통과 상태)\n일차+1, 연민 부활\n밤 킬 판정(도깨비 보호 또는 자청비 부활꽃 성공 시 무효 — 둘 다 성공 시 둘 다 소모)
 

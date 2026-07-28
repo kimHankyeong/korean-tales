@@ -512,7 +512,7 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
     expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     // 공개 발표 문구 — 대상의 배정 번호로 안내 (13번)
     expect(actor.getSnapshot().context.deathAnnouncement).toEqual({
-      text: '저승사자가 길동무로 6번을 선택했습니다',
+      text: '저승사자가 사자의 명부에 6번을 적었습니다',
       durationMs: 4000,
     });
   });

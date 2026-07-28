@@ -490,7 +490,7 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(announcements).toEqual([
       {
         event: SOCKET_EVENTS.gameAnnouncement,
-        payload: { text: `저승사자가 길동무로 ${companionSeat}번을 선택했습니다`, durationMs: 4000 },
+        payload: { text: `저승사자가 사자의 명부에 ${companionSeat}번을 적었습니다`, durationMs: 4000 },
       },
     ]);
   });

@@ -27,12 +27,12 @@ describe('직업 설명(스킬북) 모달 (requirements 6번)', () => {
     render(<SkillBookModal onClose={() => {}} />);
     // 기본 선택된 캐릭터(저승사자) 일러스트
     expect(screen.getByAltText('저승사자 일러스트')).toBeTruthy();
-    expect(screen.getByText('저승길 동무')).toBeTruthy();
+    expect(screen.getByText('사자의 명부')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('tab', { name: '깡철이' }));
     expect(screen.getByAltText('깡철이 일러스트')).toBeTruthy();
     expect(screen.getByText('재앙무죄')).toBeTruthy();
-    expect(screen.queryByText('저승길 동무')).toBeNull(); // 다른 캐릭터 스킬은 숨겨짐
+    expect(screen.queryByText('사자의 명부')).toBeNull(); // 다른 캐릭터 스킬은 숨겨짐
   });
 
   it('진영별 승리 조건이 표시된다', () => {

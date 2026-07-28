@@ -160,11 +160,11 @@ export function resolveActivePrompt(
 
     case 'night.evilSkills':
       if (myRole?.characterId === 'jeoseung') {
-        // 저승길 동무는 게임당 2회 — 다 썼으면 버튼을 숨긴다
+        // 사자의 명부는 게임당 2회 — 다 썼으면 버튼을 숨긴다
         if (!canUseSkill('jeoseung', myRole.mySkillUses, 'companion')) return null;
         return {
           kind: 'SELECT',
-          title: '길동무 — 함께 데려갈 사람',
+          title: '사자의 명부 — 함께 데려갈 사람',
           buttonLabel: '선택하기',
           excludeSelf: true,
           buildAction: (targetId) => ({ type: 'JEOSEUNG_COMPANION', targetId }),

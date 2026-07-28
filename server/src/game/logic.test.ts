@@ -436,7 +436,7 @@ describe('사망 확정 트리거 (requirements 5-6항)', () => {
     expect(result.companionTargetId).toBeNull(); // 지정 소모
     // 공개 발표 문구 — 대상의 배정 번호(seat)로 안내 (13번)
     expect(result.deathAnnouncement).toEqual({
-      text: `저승사자가 길동무로 ${haetae.seat}번을 선택했습니다`,
+      text: `저승사자가 사자의 명부에 ${haetae.seat}번을 적었습니다`,
       durationMs: 4000,
     });
   });
