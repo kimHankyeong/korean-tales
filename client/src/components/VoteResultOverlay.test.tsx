@@ -37,9 +37,14 @@ describe('VoteResultOverlay — 투표 결과 5초 공개 (9번 피드백)', () 
     );
 
     // 5번(바우)에게 3번·5번이 투표 — 같은 줄에 묶여 표시
-    const targetRow = screen.getByText('5번 바우').closest('li')!;
-    expect(targetRow.textContent).toContain('3번 초롱');
-    expect(targetRow.textContent).toContain('5번 바우');
+    const items = screen.getAllByRole('listitem');
+    const targetRow = items.find((li) => li.textContent?.includes('바우'))!;
+    expect(targetRow.textContent).toContain('3번');
+    expect(targetRow.textContent).toContain('초롱');
+    expect(targetRow.textContent).toContain('5번');
+    expect(targetRow.textContent).toContain('바우');
+    // 좌석 번호는 파란색으로 강조 표시된다
+    expect(targetRow.querySelectorAll('.text-blue-400').length).toBeGreaterThan(0);
     expect(screen.getByText('기권')).toBeTruthy();
 
     act(() => vi.advanceTimersByTime(3000));
@@ -50,8 +55,8 @@ describe('VoteResultOverlay — 투표 결과 5초 공개 (9번 피드백)', () 
     render(<VoteResultOverlay />);
     act(() => useGameStore.getState().applyVoteResult({ votes: { p1: 'p3' } }));
     act(() => vi.advanceTimersByTime(4999));
-    expect(screen.getByText('3번 초롱')).toBeTruthy();
+    expect(screen.getAllByRole('listitem')[0]!.textContent).toContain('초롱');
     act(() => vi.advanceTimersByTime(1));
-    expect(screen.queryByText('3번 초롱')).toBeNull();
+    expect(screen.queryAllByRole('listitem')).toHaveLength(0);
   });
 });

@@ -5,13 +5,19 @@
  * 타이머를 새로 건다.
  */
 
-import { useEffect } from 'react';
+import { Fragment, useEffect } from 'react';
 import type { PublicPlayerState } from '@korean-tales/shared';
 import { useGameStore } from '../store/gameStore';
 
-function labelOf(players: PublicPlayerState[], id: string): string {
+/** 좌석 번호(n번)만 파란색으로 강조해서 렌더링 */
+function PlayerLabel({ players, id }: { players: PublicPlayerState[]; id: string }) {
   const p = players.find((pl) => pl.id === id);
-  return p ? `${p.seat}번 ${p.name}` : id;
+  if (!p) return <>{id}</>;
+  return (
+    <>
+      <span className="font-bold text-blue-400">{p.seat}번</span> {p.name}
+    </>
+  );
 }
 
 export function VoteResultOverlay() {
@@ -53,11 +59,16 @@ export function VoteResultOverlay() {
           {targetEntries.map(([targetId, voterIds]) => (
             <li key={targetId} className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm">
               <span className="font-semibold text-slate-100">
-                {targetId === 'ABSTAIN' ? '기권' : labelOf(players, targetId)}
+                {targetId === 'ABSTAIN' ? '기권' : <PlayerLabel players={players} id={targetId} />}
               </span>
               <span className="text-amber-400">←</span>
               <span className="text-xs text-slate-300">
-                {voterIds.map((id) => labelOf(players, id)).join(', ')}
+                {voterIds.map((id, i) => (
+                  <Fragment key={id}>
+                    {i > 0 && ', '}
+                    <PlayerLabel players={players} id={id} />
+                  </Fragment>
+                ))}
               </span>
             </li>
           ))}
