@@ -207,11 +207,73 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     skipElection(actor);
     passSpeeches(actor);
     timeUp(actor); // 토론 종료 → 투표
+    // 생존자 전원이 기권해 마지막 투표에서 곧바로 투표 결과 공개(voteReveal)로 전이된다
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal, 9번 피드백)
     timeUp(actor); // 결과 공개 종료 → 밤
     expect(actor.getSnapshot().matches({ night: 'evilDiscussion' })).toBe(true);
     expect(aliveIds(actor)).toHaveLength(9);
+  });
+
+  it('생존자 전원이 투표를 마치면 타이머 만료 없이도 곧바로 투표 결과 공개로 전이된다 (처형 확정)', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // → vote
+    // TIME_UP을 한 번도 보내지 않고 전원이 투표만으로 voteReveal까지 도달해야 한다
+    voteAll(actor, aliveIds(actor).filter((id) => id !== 'p1'), 'p1');
+    actor.send({ type: 'VOTE', voterId: 'p1', targetId: 'ABSTAIN' }); // 대상 본인도 투표(기권)해야 "전원 투표"가 됨
+    expect(actor.getSnapshot().matches({ day: 'voteReveal' })).toBe(true);
+    timeUp(actor); // 결과 공개 종료 → finalPlea
+    expect(actor.getSnapshot().matches({ day: 'finalPlea' })).toBe(true);
+    expect(actor.getSnapshot().context.executionTargetId).toBe('p1');
+  });
+
+  it('생존자 전원이 투표를 마치면 동표 상황도 타이머 없이 곧바로 결과 공개로 전이된다', () => {
+    const actor = startGame();
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // → vote
+    // p2·p9가 4표씩 동표 — 마지막 투표자(p9, 기권)까지 던지는 순간 전원 투표 완료
+    const votes: Record<string, string> = {
+      p1: 'p2',
+      p2: 'p9',
+      p3: 'p2',
+      p4: 'p2',
+      p5: 'p9',
+      p6: 'p9',
+      p7: 'p9',
+      p8: 'p2',
+    };
+    for (const [voterId, targetId] of Object.entries(votes)) {
+      actor.send({ type: 'VOTE', voterId, targetId });
+    }
+    expect(actor.getSnapshot().matches({ day: 'vote' })).toBe(true); // p9 아직 투표 전
+    actor.send({ type: 'VOTE', voterId: 'p9', targetId: 'ABSTAIN' }); // 마지막 투표 — 곧바로 전이
+    expect(actor.getSnapshot().matches({ day: 'voteReveal' })).toBe(true);
+    timeUp(actor); // 결과 공개 종료 → 동시 발언
+    expect(actor.getSnapshot().matches({ day: 'tieSpeech' })).toBe(true);
+    expect(actor.getSnapshot().context.tieCandidates.sort()).toEqual(['p2', 'p9']);
+  });
+
+  it('재투표도 생존자 전원이 투표를 마치면 타이머 없이 곧바로 결과 공개로 전이된다', () => {
+    const actor = startGame(() => 0);
+    skipElection(actor);
+    passSpeeches(actor);
+    timeUp(actor); // → vote
+    voteAll(actor, ['p1'], 'p5');
+    voteAll(actor, ['p2'], 'p6');
+    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    timeUp(actor); // 결과 공개 종료 → 동표 → 동시 발언
+    timeUp(actor); // → 재투표 (후보는 p5·p6로 제한, 유권자는 생존자 9명 전원)
+    const ids = aliveIds(actor);
+    for (const id of ids.slice(0, -1)) {
+      actor.send({ type: 'VOTE', voterId: id, targetId: id === 'p1' ? 'p5' : 'p6' });
+    }
+    expect(actor.getSnapshot().matches({ day: 'revote' })).toBe(true); // 아직 1명 남음
+    actor.send({ type: 'VOTE', voterId: ids.at(-1)!, targetId: 'p6' }); // 마지막 1표 — 곧바로 전이
+    expect(actor.getSnapshot().matches({ day: 'voteReveal' })).toBe(true);
+    timeUp(actor); // 결과 공개 종료 → finalPlea
+    expect(actor.getSnapshot().context.executionTargetId).toBe('p6');
   });
 
   it('동표 → 동시 발언 → 재투표 → 재동표면 무작위 1인 처형', () => {
@@ -258,8 +320,8 @@ describe('낮 페이즈 (requirements 5번 + 1번 Skip 규칙)', () => {
     skipElection(actor);
     passSpeeches(actor);
     timeUp(actor); // → vote
+    // 생존자 전원 기권 — 마지막 투표에서 곧바로 voteReveal로 전이된다
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
     timeUp(actor); // 결과 공개 종료 → night (evilDiscussion)
     timeUp(actor); // evilDiscussion → evilVote
     timeUp(actor); // evilVote → evilSkills (킬 없음)
@@ -306,8 +368,8 @@ describe('밤 페이즈 (requirements 4번)', () => {
     skipElection(actor);
     passSpeeches(actor);
     timeUp(actor); // → vote
+    // 생존자 전원 기권 — 마지막 투표에서 곧바로 voteReveal로 전이된다
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
     timeUp(actor); // 결과 공개 종료 → night
   }
 
@@ -475,8 +537,8 @@ describe('스킬 상호작용 복합 케이스 (requirements 3·4·5번)', () =>
   function toNight(actor: Actor) {
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
+    // 생존자 전원 기권 — 마지막 투표에서 곧바로 voteReveal로 전이된다
     voteAll(actor, aliveIds(actor), 'ABSTAIN');
-    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
     timeUp(actor); // 결과 공개 종료 → night
   }
 
@@ -782,8 +844,7 @@ describe('도중에 나가기 (FORFEIT)', () => {
     skipElection(actor);
     passSpeeches(actor);
     timeUp(actor); // 토론 → 투표
-    voteAll(actor, aliveIds(actor), 'ABSTAIN'); // 전원 기권 → 밤
-    timeUp(actor); // 투표 종료 → 투표 결과 공개(voteReveal)
+    voteAll(actor, aliveIds(actor), 'ABSTAIN'); // 전원 기권 — 마지막 투표에서 곧바로 voteReveal로 전이
     timeUp(actor); // 결과 공개 종료 → 밤
     timeUp(actor); // evilDiscussion → evilVote
     timeUp(actor); // evilVote → evilSkills (무투표)

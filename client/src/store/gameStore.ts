@@ -233,7 +233,7 @@ export const useGameStore = create<GameUiState>((set, get) => ({
       voteResult: {
         id: nextVoteResultId++,
         votes: payload.votes,
-        durationMs: payload.durationMs ?? 5000,
+        durationMs: payload.durationMs ?? 7000,
       },
     }),
   clearVoteResult: () => set({ voteResult: null }),

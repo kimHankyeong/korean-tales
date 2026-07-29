@@ -37,28 +37,28 @@ stateDiagram-v2
         [*] --> personalSpeech
         personalSpeech: 개인 발언 (방 옵션 80/120초 × 인원)\n조언자는 마지막, Skip = 발언자 본인만
         discussion: 전체 토론 (방 옵션 3분/5분)\n생존자 전원 Skip 시 조기 종료
-        vote: 처형 투표 (10초, 기권 포함)
-        voteReveal: 투표 결과 공개 (5초)\n누가 누구에게 투표했는지 화살표로 공개\npostVoteTarget에 따라 분기
+        vote: 처형 투표 (15초, 기권 포함)\n생존자 전원 투표 완료 시 조기 종료
+        voteReveal: 투표 결과 공개 (7초)\n누가 누구에게 투표했는지 화살표로 공개\npostVoteTarget에 따라 분기
         tieSpeech: 최다득표자 동시 발언 (20초)
-        revote: 재투표 (동표자만 후보)
+        revote: 재투표 (동표자만 후보)\n생존자 전원 투표 완료 시 조기 종료
         finalPlea: 최후의 변론 (20초)\nSkip = 처형 대상자 본인만 → 즉시 사망 처리
 
         personalSpeech --> personalSpeech: TIME_UP/본인 SKIP [다음 발언자 남음]
         personalSpeech --> discussion: TIME_UP/본인 SKIP [마지막 발언자]
         discussion --> vote: TIME_UP / 전원 SKIP [유혹 미사용]
-        vote --> voteReveal: TIME_UP [항상 —\npostVoteTarget 기록]
+        vote --> voteReveal: TIME_UP 또는 전원 투표 완료 [항상 —\npostVoteTarget 기록]
         voteReveal --> tieSpeech: TIME_UP [최다 득표 동표]
         tieSpeech --> revote: TIME_UP
         voteReveal --> finalPlea: TIME_UP [최다 득표 단독]
-        revote --> voteReveal: TIME_UP [단독 확정 또는\n재동표 → 무작위 1인]
+        revote --> voteReveal: TIME_UP 또는 전원 투표 완료 [단독 확정 또는\n재동표 → 무작위 1인]
     }
 
     state "밤 (4번)" as night {
         [*] --> evilDiscussion
         evilDiscussion: 악 진영 토론 (90초)\n악 생존자 전원 Skip 시 조기 종료
-        evilVote: 악 처치 투표 (10초)\n무투표 → 킬 없음\n대상 확정(nightKillTargetId)
+        evilVote: 악 처치 투표 (15초)\n무투표 → 킬 없음\n대상 확정(nightKillTargetId)
         evilSkills: 악 개별 스킬 (15초)\n저승사자 사자의 명부 / 구미호 유혹
-        goodSkills: 해태 투사 / 도깨비 장난 / 자청비 부활꽃·멸망꽃 (10초, 동시)\n자청비는 nightKillTargetId만 부활 후보\n(도깨비 보호 여부는 아직 모름) — 부활꽃/멸망꽃 동시 사용 불가\n조언자 발언 방향(역/정순) 결정 가능
+        goodSkills: 해태 투사 / 도깨비 장난 / 자청비 부활꽃·멸망꽃 (15초, 동시)\n자청비는 nightKillTargetId만 부활 후보\n(도깨비 보호 여부는 아직 모름) — 부활꽃/멸망꽃 동시 사용 불가\n조언자 발언 방향(역/정순) 결정 가능
         dawn: 새벽 (통과 상태)\n일차+1, 연민 부활\n밤 킬 판정(도깨비 보호 또는 자청비 부활꽃 성공 시 무효 — 둘 다 성공 시 둘 다 소모)
 
         evilDiscussion --> evilVote: TIME_UP / 악 전원 SKIP
@@ -103,8 +103,8 @@ stateDiagram-v2
 | 선출 토론 | 50초 | `advisorDiscussion` |
 | 개인 발언 (발언자별) | 80/120초 | 방 옵션 `RoomTimerSettings.personalSpeechSeconds` |
 | 전체 토론 | 3분/5분 | 방 옵션 `RoomTimerSettings.discussionSeconds` |
-| 처형 투표·재투표 / 악 처치 투표 | 10초 | `vote` |
-| 처형 투표(재투표 포함) 결과 공개 — 끝나야 다음 단계로 진행 | 5초 | `voteReveal` |
+| 처형 투표·재투표(생존자 전원 투표 완료 시 조기 종료) / 악 처치 투표 | 15초 | `vote` |
+| 처형 투표(재투표 포함) 결과 공개 — 끝나야 다음 단계로 진행 | 7초 | `voteReveal` |
 | 동표 동시 발언 | 20초 | `tieSpeech` |
 | 최후의 변론 | 20초 | `finalPlea` |
 | 밤 선 진영 스킬(해태·도깨비·자청비 부활꽃/멸망꽃) / 악 개별 스킬 | 15초 / 15초 | `nightGoodSkillDecision`·`nightEvilIndividualSkill` |

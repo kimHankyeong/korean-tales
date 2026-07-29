@@ -123,6 +123,33 @@ export const gameMachine = setup({
       resolveExecutionVote(context.votes, 1).kind === 'NO_EXECUTION',
     // 전이 조건: 처형 투표 최다 득표 단독 확정
     execDecided: ({ context }) => resolveExecutionVote(context.votes, 1).kind === 'EXECUTE',
+    // 생존자 전원이 투표를 마쳤는지 — 이 투표까지 반영한 가상의 집계로 판정(타이머를
+    // 기다리지 않고 즉시 결과 공개로 넘어가기 위함). 실제 반영은 registerVote가 별도로 한다
+    allAliveVotedNoExecution: ({ context, event }) => {
+      if (event.type !== 'VOTE') return false;
+      const merged = { ...context.votes, [event.voterId]: event.targetId };
+      if (!alivePlayers(context.players).every((p) => p.id in merged)) return false;
+      return resolveExecutionVote(merged, 1).kind === 'NO_EXECUTION';
+    },
+    allAliveVotedExecDecided: ({ context, event }) => {
+      if (event.type !== 'VOTE') return false;
+      const merged = { ...context.votes, [event.voterId]: event.targetId };
+      if (!alivePlayers(context.players).every((p) => p.id in merged)) return false;
+      return resolveExecutionVote(merged, 1).kind === 'EXECUTE';
+    },
+    allAliveVotedTie: ({ context, event }) => {
+      if (event.type !== 'VOTE') return false;
+      const merged = { ...context.votes, [event.voterId]: event.targetId };
+      if (!alivePlayers(context.players).every((p) => p.id in merged)) return false;
+      const kind = resolveExecutionVote(merged, 1).kind;
+      return kind !== 'NO_EXECUTION' && kind !== 'EXECUTE';
+    },
+    // 재투표: 생존자 전원이 투표를 마쳤는지 (재투표는 기권 규칙 없이 항상 처형으로 귀결)
+    allAliveRevoted: ({ context, event }) => {
+      if (event.type !== 'VOTE') return false;
+      const merged = { ...context.votes, [event.voterId]: event.targetId };
+      return alivePlayers(context.players).every((p) => p.id in merged);
+    },
     // voteReveal(투표 결과 공개) 종료 후 어디로 갈지 — postVoteTarget에 저장해둔 값을 읽는다
     postVoteTargetIsNight: ({ context }) => context.postVoteTarget === 'NIGHT',
     postVoteTargetIsFinalPlea: ({ context }) => context.postVoteTarget === 'FINAL_PLEA',
@@ -756,11 +783,28 @@ export const gameMachine = setup({
             ],
           },
         },
-        // 처형 투표 (10초, 기권 포함)
+        // 처형 투표 (15초, 기권 포함) — 생존자 전원이 투표를 마치면 타이머를 기다리지 않고 즉시 결과 공개로
         vote: {
           entry: 'clearVotes',
           on: {
-            VOTE: { guard: 'validDayVote', actions: 'registerVote' },
+            VOTE: [
+              {
+                guard: and(['validDayVote', 'allAliveVotedNoExecution']),
+                actions: ['registerVote', 'snapshotVoteResult', 'setPostVoteTargetNight'],
+                target: 'voteReveal',
+              },
+              {
+                guard: and(['validDayVote', 'allAliveVotedExecDecided']),
+                actions: ['registerVote', 'snapshotVoteResult', 'applyExecutionRound1', 'setPostVoteTargetFinalPlea'],
+                target: 'voteReveal',
+              },
+              {
+                guard: and(['validDayVote', 'allAliveVotedTie']),
+                actions: ['registerVote', 'snapshotVoteResult', 'setTieCandidatesFromExecution', 'setPostVoteTargetTieSpeech'],
+                target: 'voteReveal',
+              },
+              { guard: 'validDayVote', actions: 'registerVote' },
+            ],
             TIME_UP: [
               // 전이 조건: 전원 기권(득표자 없음) → 결과 공개 후 밤으로 (5-4항 기권 규칙)
               {
@@ -799,11 +843,19 @@ export const gameMachine = setup({
             TIME_UP: { target: 'revote' },
           },
         },
-        // 재투표 — 재투표에서도 동표면 최다득표자 중 무작위 1인 처형 (5-4항)
+        // 재투표 — 재투표에서도 동표면 최다득표자 중 무작위 1인 처형 (5-4항).
+        // 생존자 전원이 투표를 마치면 타이머를 기다리지 않고 즉시 결과 공개로
         revote: {
           entry: 'clearVotes',
           on: {
-            VOTE: { guard: 'validDayRevote', actions: 'registerVote' },
+            VOTE: [
+              {
+                guard: and(['validDayRevote', 'allAliveRevoted']),
+                actions: ['registerVote', 'snapshotVoteResult', 'applyExecutionRound2', 'setPostVoteTargetFinalPlea'],
+                target: 'voteReveal',
+              },
+              { guard: 'validDayRevote', actions: 'registerVote' },
+            ],
             // 재투표 — 단독 확정 또는 재동표(·전원 기권) 시 동표 후보 중 무작위 1인 처형,
             // 역시 결과 공개(voteReveal)를 거친 뒤 최후의 변론으로
             TIME_UP: {
