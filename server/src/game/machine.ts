@@ -712,8 +712,8 @@ export const gameMachine = setup({
           on: {
             VOTE: { guard: 'validElectionVote', actions: 'registerVote' },
             TIME_UP: [
-              // 전이 조건: 1차 선출 확정 (단독 최다 또는 무득표 무작위) → 첫날 낮 개인 발언
-              { guard: 'electionSettled', actions: 'applyElectionRound1', target: '#daySpeech' },
+              // 전이 조건: 1차 선출 확정 (단독 최다 또는 무득표 무작위) → 발언 방향 선택
+              { guard: 'electionSettled', actions: 'applyElectionRound1', target: 'directionChoice' },
               // 전이 조건: 동표 → 동표자만 후보로 재투표 (처형 투표와 동일한 동표 로직 재사용)
               { actions: 'setTieCandidatesFromElection', target: 'electionRevote' },
             ],
@@ -723,8 +723,17 @@ export const gameMachine = setup({
         electionRevote: {
           on: {
             VOTE: { guard: 'validElectionRevote', actions: 'registerVote' },
-            // 재투표 — 단독 확정 또는 재동표·무득표 시 동표 후보 중 무작위 선정
-            TIME_UP: { actions: 'applyElectionRound2', target: '#daySpeech' },
+            // 재투표 — 단독 확정 또는 재동표·무득표 시 동표 후보 중 무작위 선정 → 발언 방향 선택
+            TIME_UP: { actions: 'applyElectionRound2', target: 'directionChoice' },
+          },
+        },
+        // 조언자 확정 직후 발언 방향(정순/역순) 선택 (5초) — 이후 밤마다도 goodSkills에서
+        // 다시 고를 수 있지만, 첫날은 그 전에 밤이 없어 이 창이 유일한 기회다. 선택하면
+        // 타이머를 기다리지 않고 곧바로 개인 발언으로 진행
+        directionChoice: {
+          on: {
+            ADVISOR_DIRECTION: { actions: 'setSpeechDirection', target: '#daySpeech' },
+            TIME_UP: { target: '#daySpeech' },
           },
         },
       },

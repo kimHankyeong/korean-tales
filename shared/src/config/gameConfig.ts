@@ -82,6 +82,12 @@ export const TIMER_CONFIG = {
   advisorDiscussion: 50,
   /** 첫날 아침: 조언자 선출 투표 */
   advisorVote: 7,
+  /**
+   * 첫날 아침: 조언자로 확정된 직후, 낮 개인 발언 순서(정순/역순)를 고를 시간.
+   * 이후 밤(goodSkills)에도 매일 다시 고를 수 있지만, 첫날은 그 전에 밤이 없어
+   * 고를 기회 자체가 없었다 — 이 창을 별도로 준다. 선택하면 곧바로 개인 발언으로 진행
+   */
+  advisorDirectionChoice: 5,
   /** 투항: 최초 클릭 후 팀 전원 동의 대기 */
   surrenderConsent: 30,
 } as const;

@@ -35,6 +35,8 @@ export function getTimerSpec(snapshot: GameSnapshot): { key: string; seconds: nu
     return { key: 'electionVote', seconds: TIMER_CONFIG.advisorVote };
   if (snapshot.matches({ firstMorning: 'electionRevote' }))
     return { key: 'electionRevote', seconds: TIMER_CONFIG.advisorVote };
+  if (snapshot.matches({ firstMorning: 'directionChoice' }))
+    return { key: 'directionChoice', seconds: TIMER_CONFIG.advisorDirectionChoice };
 
   /* 낮 (2번 표 + 방 옵션) */
   if (snapshot.matches({ day: 'personalSpeech' }))

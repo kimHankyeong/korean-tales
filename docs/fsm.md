@@ -25,12 +25,16 @@ stateDiagram-v2
         electionDiscussion: 선출 전체 토론 (50초)\n생존자 전원 Skip 시 조기 종료
         electionVote: 선출 투표 (7초)\n출마자는 투표권 없음
         electionRevote: 선출 재투표\n(동표자만 후보)
+        directionChoice: 발언 방향 선택 (5초)\n조언자 확정 직후, 선택 시 즉시 개인 발언으로
 
         candidacy --> appeal: TIME_UP [출마자 있음]
         appeal --> appeal: TIME_UP/본인 SKIP [다음 발언자 남음]
         appeal --> electionDiscussion: TIME_UP/본인 SKIP [마지막 발언자]
         electionDiscussion --> electionVote: TIME_UP / 전원 SKIP
         electionVote --> electionRevote: TIME_UP [최다 득표 동표]
+        electionVote --> directionChoice: TIME_UP [최다 득표 단독]
+        electionRevote --> directionChoice: TIME_UP [단독 확정 또는 재동표 → 무작위 1인]
+        directionChoice --> [*]: ADVISOR_DIRECTION [즉시] 또는 TIME_UP [기본값 정순]
     }
 
     state "낮 (5번·7번)" as day {
@@ -101,6 +105,7 @@ stateDiagram-v2
 | 출마 신청 / 선출 투표·재투표 | 7초 / 7초 | `TIMER_CONFIG.advisorCandidacy`·`advisorVote` |
 | 출마자 어필 (발언자별) | 각 20초 | `advisorAppeal` |
 | 선출 토론 | 50초 | `advisorDiscussion` |
+| 조언자 확정 직후 발언 방향 선택 | 5초 | `advisorDirectionChoice` |
 | 개인 발언 (발언자별) | 80/120초 | 방 옵션 `RoomTimerSettings.personalSpeechSeconds` |
 | 전체 토론 | 3분/5분 | 방 옵션 `RoomTimerSettings.discussionSeconds` |
 | 처형 투표·재투표(생존자 전원 투표 완료 시 조기 종료) / 악 처치 투표 | 15초 | `vote` |

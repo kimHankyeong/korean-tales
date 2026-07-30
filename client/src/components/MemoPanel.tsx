@@ -12,7 +12,7 @@ export function MemoPanel({
   sendAllowed,
 }: {
   onSendLine: (text: string) => void;
-  /** 본인 개인 발언 시간·전체 발언(토론) 시간에만 "채팅으로 보내기"를 허용한다 */
+  /** 본인 개인 발언 시간·전체 발언(토론) 시간, 밤중 악 진영 채팅창(생존한 악 진영 본인)에만 "채팅으로 보내기"를 허용한다 */
   sendAllowed: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -136,7 +136,11 @@ export function MemoPanel({
                       disabled={!sendAllowed}
                       onClick={() => onSendLine(line)}
                       aria-label={`"${line}" 채팅으로 보내기`}
-                      title={sendAllowed ? '채팅으로 보내기' : '내 개인 발언 시간·전체 발언 시간에만 보낼 수 있어요'}
+                      title={
+                        sendAllowed
+                          ? '채팅으로 보내기'
+                          : '내 개인 발언 시간·전체 발언 시간, 또는 밤중 악 진영 채팅에서만 보낼 수 있어요'
+                      }
                       className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-sky-700/80"
                     >
                       보내기

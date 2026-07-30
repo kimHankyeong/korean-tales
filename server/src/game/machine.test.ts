@@ -125,12 +125,42 @@ describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
     actor.send({ type: 'VOTE', voterId: 'p1', targetId: 'p2' });
     voteAll(actor, ['p3', 'p4'], 'p1');
     voteAll(actor, ['p5'], 'p2');
-    timeUp(actor);
+    timeUp(actor); // 확정 → 발언 방향 선택
+    expect(actor.getSnapshot().matches({ firstMorning: 'directionChoice' })).toBe(true);
+    timeUp(actor); // 방향 선택 시간 종료(미선택 — 기본 정순) → 개인 발언
     const snap = actor.getSnapshot();
     expect(snap.context.advisorId).toBe('p1');
     expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
     // 조언자(p1)는 제일 마지막 발언
     expect(snap.context.speechQueue.at(-1)).toBe('p1');
+  });
+
+  it('조언자 확정 직후 발언 방향을 선택하면 타이머를 기다리지 않고 곧바로 개인 발언으로 넘어간다', () => {
+    const actor = startGame();
+    actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p1' });
+    timeUp(actor); // → appeal
+    timeUp(actor); // → electionDiscussion
+    timeUp(actor); // → electionVote
+    voteAll(actor, ['p2'], 'p1');
+    timeUp(actor); // 확정 → 발언 방향 선택
+    expect(actor.getSnapshot().matches({ firstMorning: 'directionChoice' })).toBe(true);
+    // 조언자가 아닌 사람이 보내면 무시된다 (actionAuth가 걸러내지만 머신 자체도 advisorId만 반영)
+    actor.send({ type: 'ADVISOR_DIRECTION', direction: 'REVERSE' });
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true); // TIME_UP 없이 즉시 전이
+    expect(actor.getSnapshot().context.speechDirection).toBe('REVERSE');
+  });
+
+  it('발언 방향 선택 시간이 그냥 끝나면 기본값(정순)으로 개인 발언이 시작된다', () => {
+    const actor = startGame();
+    actor.send({ type: 'CANDIDACY_APPLY', playerId: 'p1' });
+    timeUp(actor); // → appeal
+    timeUp(actor); // → electionDiscussion
+    timeUp(actor); // → electionVote
+    voteAll(actor, ['p2'], 'p1');
+    timeUp(actor); // 확정 → 발언 방향 선택
+    timeUp(actor); // 미선택 → 타이머 만료
+    expect(actor.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
+    expect(actor.getSnapshot().context.speechDirection).toBe('FORWARD');
   });
 
   it('어필 발언은 현재 발언자 본인의 Skip으로만 즉시 넘어간다', () => {
@@ -158,7 +188,9 @@ describe('첫날 아침 — 조언자 선출 (requirements 7번)', () => {
     expect(actor.getSnapshot().matches({ firstMorning: 'electionRevote' })).toBe(true);
     voteAll(actor, ['p5'], 'p1');
     voteAll(actor, ['p6'], 'p2');
-    timeUp(actor); // 재동표 → 무작위 (rng=0 → p1)
+    timeUp(actor); // 재동표 → 무작위 (rng=0 → p1) → 발언 방향 선택
+    expect(actor.getSnapshot().matches({ firstMorning: 'directionChoice' })).toBe(true);
+    timeUp(actor); // 방향 선택 시간 종료 → 개인 발언
     const snap = actor.getSnapshot();
     expect(snap.context.advisorId).toBe('p1');
     expect(snap.matches({ day: 'personalSpeech' })).toBe(true);
@@ -508,6 +540,7 @@ describe('사망 확정 트리거 (requirements 5-6항·7번)', () => {
     timeUp(actor); // → electionDiscussion
     timeUp(actor); // → electionVote
     voteAll(actor, ['p1'], 'p5');
+    timeUp(actor); // 확정 → 발언 방향 선택
     timeUp(actor); // → day.personalSpeech, advisor = p5
     expect(actor.getSnapshot().context.advisorId).toBe('p5');
     executeTarget(actor, 'p5');
@@ -829,7 +862,8 @@ describe('도중에 나가기 (FORFEIT)', () => {
     timeUp(actor); // → electionDiscussion
     timeUp(actor); // → electionVote
     voteAll(actor, ['p2', 'p3'], 'p1');
-    timeUp(actor); // p1이 조언자로 확정, 낮 개인 발언 시작
+    timeUp(actor); // p1이 조언자로 확정 → 발언 방향 선택
+    timeUp(actor); // 방향 선택 시간 종료 → 낮 개인 발언 시작
     expect(actor.getSnapshot().context.advisorId).toBe('p1');
 
     actor.send({ type: 'FORFEIT', playerId: 'p1' });

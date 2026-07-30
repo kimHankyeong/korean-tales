@@ -34,6 +34,7 @@ export function friendlyTimerLabel(phaseKey: string): string {
     electionDiscussion: '조언자 후보 전체 발언 시간',
     electionVote: '조언자 선출 투표 시간',
     electionRevote: '조언자 선출 재투표 시간',
+    directionChoice: '발언 순서 선택 시간',
     speech: '개인 발언 시간',
     discussion: '전체 토론 시간',
     vote: '처형 투표 시간',

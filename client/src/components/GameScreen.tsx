@@ -93,8 +93,10 @@ export function GameScreen() {
 
   // 다시하기 — 방은 나가지 않고 결과 화면만 닫는다. 서버가 게임 종료 시 방을 자동 비공개
   // 전환 + 전원 준비 초기화해두므로, AppRouter가 곧바로 같은 방의 준비 화면을 보여준다.
+  // 대기방 채팅창도 gameStore.messages를 그대로 재사용하므로(RoomLobbyScreen 참고), 방금 끝난
+  // 게임의 채팅 기록(악 진영 전용 채널 포함)이 새 대기방에 그대로 남지 않도록 함께 비운다
   function restartSameRoom() {
-    useGameStore.setState({ gameOverResult: null });
+    useGameStore.setState({ gameOverResult: null, messages: [] });
   }
 
   async function agreeSurrenderClick() {
@@ -108,7 +110,7 @@ export function GameScreen() {
   }
 
   function goLobby() {
-    useGameStore.setState({ gameOverResult: null });
+    useGameStore.setState({ gameOverResult: null, messages: [] });
     getSocket().emit(SOCKET_EVENTS.roomLeave);
     leaveRoom();
   }
@@ -140,9 +142,12 @@ export function GameScreen() {
   const prompt = store.publicState
     ? resolveActivePrompt(store.publicState, store.role, store.myId, store.timer?.label ?? null)
     : null;
-  // 조언자 발언 방향 결정은 자청비 꽃 선택과 같은 창(night.goodSkills)에서 이뤄진다
+  // 조언자 발언 방향 결정은 매일 밤(night.goodSkills)에 이뤄지지만, 첫날은 그 전에 밤이
+  // 없어 조언자 확정 직후(firstMorning.directionChoice)에도 별도로 선택 창을 준다
   const advisorDirectionActive =
-    store.publicState?.phase === 'night.goodSkills' && store.publicState.advisorId === store.myId;
+    (store.publicState?.phase === 'night.goodSkills' ||
+      store.publicState?.phase === 'firstMorning.directionChoice') &&
+    store.publicState.advisorId === store.myId;
 
   // 밤에는 전체 공개 채팅이 없다 — 악 진영은 전용 채널로, 그 외는 채팅창 자체를 잠근다 (3번·4번 섹션)
   const isNight = store.phase === 'NIGHT';
@@ -153,10 +158,13 @@ export function GameScreen() {
     void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text });
   }
 
-  // 메모장 "채팅으로 보내기"는 본인 개인 발언 시간과 전체 발언(토론) 시간에만 허용한다
+  // 메모장 "채팅으로 보내기"는 본인 개인 발언 시간·전체 발언(토론) 시간, 그리고 밤중 악 진영
+  // 전용 채팅창(생존한 악 진영 본인)에만 허용한다
+  const myAlive = store.publicState?.players.find((p) => p.id === store.myId)?.alive ?? false;
   const memoSendAllowed =
     store.publicState?.phase === 'day.discussion' ||
-    (store.publicState?.phase === 'day.personalSpeech' && store.publicState.currentSpeakerId === store.myId);
+    (store.publicState?.phase === 'day.personalSpeech' && store.publicState.currentSpeakerId === store.myId) ||
+    (isNight && isEvil && myAlive);
 
   return (
     <main className="flex h-screen flex-col gap-3 overflow-y-auto bg-slate-950 p-4 text-slate-100 landscape:flex-row landscape:overflow-y-hidden max-md:landscape:overflow-x-auto md:flex-row md:overflow-x-hidden">
@@ -268,23 +276,34 @@ export function GameScreen() {
         )}
       </aside>
 
-      {/* 조언자 발언 방향 결정 — 자청비 꽃 단계와 동시에 뜰 수 있음 */}
+      {/* 조언자 발언 방향 결정 — 자청비 꽃 단계와 동시에 뜰 수 있음. 현재 선택된 방향은
+          store.publicState.speechDirection을 반영해 테두리로 강조 표시한다(제대로 눌렸는지
+          확인할 방법이 없다는 피드백 반영) */}
       {advisorDirectionActive && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center gap-2">
-          <button
-            type="button"
-            onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'FORWARD' })}
-            className="pointer-events-auto rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white transition active:brightness-75"
-          >
-            발언 순서: 정순
-          </button>
-          <button
-            type="button"
-            onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'REVERSE' })}
-            className="pointer-events-auto rounded-lg border border-amber-500 px-4 py-1.5 text-sm font-bold text-amber-300 transition active:brightness-75"
-          >
-            발언 순서: 역순
-          </button>
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex flex-col items-center gap-1">
+          <p className="pointer-events-none text-xs text-amber-200">
+            현재 선택: {store.publicState?.speechDirection === 'REVERSE' ? '역순' : '정순'}
+          </p>
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'FORWARD' })}
+              className={`pointer-events-auto rounded-lg bg-amber-600 px-4 py-1.5 text-sm font-bold text-white transition active:brightness-75 ${
+                store.publicState?.speechDirection === 'FORWARD' ? 'ring-2 ring-white' : 'opacity-70'
+              }`}
+            >
+              발언 순서: 정순
+            </button>
+            <button
+              type="button"
+              onClick={() => sendAction({ type: 'ADVISOR_DIRECTION', direction: 'REVERSE' })}
+              className={`pointer-events-auto rounded-lg border border-amber-500 px-4 py-1.5 text-sm font-bold text-amber-300 transition active:brightness-75 ${
+                store.publicState?.speechDirection === 'REVERSE' ? 'ring-2 ring-amber-300' : 'opacity-70'
+              }`}
+            >
+              발언 순서: 역순
+            </button>
+          </div>
         </div>
       )}
 
