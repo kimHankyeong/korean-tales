@@ -12,6 +12,7 @@ import {
   type Faction,
   type RoomSettingsPayload,
 } from '@korean-tales/shared';
+import * as api from '../lib/api';
 import { emitWithAck, getSocket, myPlayerId } from '../lib/socket';
 import { useAuthStore } from '../store/authStore';
 import { useGameStore } from '../store/gameStore';
@@ -19,6 +20,7 @@ import { useRoomStore } from '../store/roomStore';
 import { AdminCharacterPickModal } from './AdminCharacterPickModal';
 import { BackButton } from './BackButton';
 import { LobbyChatBox } from './LobbyChatBox';
+import { MyPage } from './MyPage';
 import { SkillBookModal } from './SkillBookModal';
 import { SoundSettingsModal } from './SoundSettingsModal';
 
@@ -41,9 +43,12 @@ export function RoomLobbyScreen() {
   const [showSound, setShowSound] = useState(false);
   const [showCharacterPick, setShowCharacterPick] = useState(false);
   const [kickMenuFor, setKickMenuFor] = useState<string | null>(null);
+  const [showMyPage, setShowMyPage] = useState(false);
   // chat:message 구독은 AppRouter.tsx가 항상 마운트된 상태로 전역 처리한다 —
   // 여기서 또 구독하면 메시지가 두 번씩 표시되는 중복 버그가 생긴다.
   const messages = useGameStore((s) => s.messages);
+  const myProfile = useGameStore((s) => s.myProfile);
+  const bgmVolume = useGameStore((s) => s.bgmVolume);
 
   async function updateSettings(patch: Partial<RoomSettingsPayload>) {
     setBusy(true);
@@ -116,6 +121,38 @@ export function RoomLobbyScreen() {
           onClose={() => setShowCharacterPick(false)}
         />
       )}
+      {showMyPage && (
+        <MyPage
+          user={myProfile}
+          onChangeNickname={async (nickname) => {
+            if (nickname.length < 2) return '닉네임은 2자 이상이어야 해요.';
+            const result = await api.updateNickname(nickname);
+            if (!result.ok) return result.error;
+            useGameStore.getState().setMyNickname(result.user.nickname);
+            return null;
+          }}
+          onUploadAvatar={async (blob) => {
+            const result = await api.uploadAvatar(blob);
+            if (!result.ok) return result.error;
+            useGameStore.getState().setMyAvatarUrl(api.resolveAssetUrl(result.user.profileImageUrl));
+            return null;
+          }}
+          bgmVolume={bgmVolume}
+          onChangeBgmVolume={useGameStore.getState().setBgmVolume}
+          onChangePassword={async (currentPassword, newPassword) => {
+            const result = await api.updatePassword(currentPassword, newPassword);
+            return result.ok ? null : result.error;
+          }}
+          onFetchMatchHistory={api.fetchMatchHistory}
+          onLogout={() => {
+            getSocket().emit(SOCKET_EVENTS.roomLeave);
+            leaveRoom();
+            void api.logout();
+            useAuthStore.getState().signOut();
+          }}
+          onClose={() => setShowMyPage(false)}
+        />
+      )}
 
       <section className="flex-1 overflow-y-auto rounded-xl border border-slate-700 bg-slate-900 p-4 pt-12 md:pt-4">
         <div className="mb-1 flex items-center gap-2">
@@ -160,6 +197,16 @@ export function RoomLobbyScreen() {
                   <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] text-emerald-300">
                     준비 완료
                   </span>
+                )}
+                {p.id === myId && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMyPage(true)}
+                    aria-label="내 프로필 설정"
+                    className="rounded-full px-1.5 py-0.5 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                  >
+                    ⋯
+                  </button>
                 )}
                 {isHost && p.id !== myId && (
                   <div className="relative">

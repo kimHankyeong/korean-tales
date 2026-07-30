@@ -280,7 +280,7 @@ export function GameScreen() {
           store.publicState.speechDirection을 반영해 테두리로 강조 표시한다(제대로 눌렸는지
           확인할 방법이 없다는 피드백 반영) */}
       {advisorDirectionActive && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex flex-col items-center gap-1">
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-[70] flex flex-col items-center gap-1">
           <p className="pointer-events-none text-xs text-amber-200">
             현재 선택: {store.publicState?.speechDirection === 'REVERSE' ? '역순' : '정순'}
           </p>
@@ -322,7 +322,7 @@ export function GameScreen() {
       )}
 
       {prompt?.kind === 'BUTTON' && (
-        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-end justify-items-center pb-24">
+        <div className="pointer-events-none fixed inset-0 z-[70] grid place-items-end justify-items-center pb-24">
           <button
             type="button"
             disabled={actedOnPrompt}
@@ -338,7 +338,7 @@ export function GameScreen() {
       )}
 
       {prompt?.kind === 'SKIP' && (
-        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-end justify-items-center pb-24">
+        <div className="pointer-events-none fixed inset-0 z-[70] grid place-items-end justify-items-center pb-24">
           <button
             type="button"
             disabled={actedOnPrompt}
@@ -359,7 +359,7 @@ export function GameScreen() {
         const reviveTargetId = store.flowerOptions?.revivableTargetIds[0];
         const reviveTarget = store.players.find((p) => p.id === reviveTargetId);
         return (
-        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center">
+        <div className="pointer-events-none fixed inset-0 z-[70] grid place-items-center">
           <div className="pointer-events-auto flex flex-col items-center gap-2 rounded-xl border border-slate-600 bg-slate-900/95 p-4 shadow-2xl">
             {flowerMode === null ? (
               <>

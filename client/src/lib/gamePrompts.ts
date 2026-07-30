@@ -98,6 +98,7 @@ export function resolveActivePrompt(
     case 'day.personalSpeech':
       return state.currentSpeakerId === myId ? { kind: 'SKIP' } : null;
 
+    case 'firstMorning.electionDiscussion':
     case 'day.discussion':
     case 'night.evilDiscussion':
       return { kind: 'SKIP' };

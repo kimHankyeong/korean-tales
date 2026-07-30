@@ -62,3 +62,15 @@ describe('resolveActivePrompt — 사망자는 관전만 가능 (13번 버그 �
     expect(resolveActivePrompt(state, null, 'p1')?.kind).toBe('SELECT');
   });
 });
+
+describe('resolveActivePrompt — 조언자 선출 전체 토론(firstMorning.electionDiscussion)', () => {
+  it('생존자는 Skip 프롬프트를 받는다 (누락되어 있던 케이스)', () => {
+    const state = baseState({ phase: 'firstMorning.electionDiscussion' });
+    expect(resolveActivePrompt(state, null, 'p1')?.kind).toBe('SKIP');
+  });
+
+  it('사망자는 Skip 프롬프트를 받지 못한다', () => {
+    const state = baseState({ phase: 'firstMorning.electionDiscussion', players: makePlayers({ p1: false }) });
+    expect(resolveActivePrompt(state, null, 'p1')).toBeNull();
+  });
+});

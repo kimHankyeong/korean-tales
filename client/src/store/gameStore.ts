@@ -310,19 +310,23 @@ export const useGameStore = create<GameUiState>((set, get) => ({
   applyGameOver: (gameOverResult) => set({ gameOverResult }),
 
   applyChatMessage: (payload) =>
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: messageId(),
-          kind: 'CHAT',
-          senderId: payload.senderId,
-          senderName: payload.channel === 'EVIL' ? `${payload.senderName} (악)` : payload.senderName,
-          senderSeat: state.players.find((p) => p.id === payload.senderId)?.seat,
-          text: payload.text,
-        },
-      ],
-    })),
+    set((state) => {
+      const sender = state.players.find((p) => p.id === payload.senderId);
+      return {
+        messages: [
+          ...state.messages,
+          {
+            id: messageId(),
+            kind: 'CHAT',
+            senderId: payload.senderId,
+            senderName: payload.channel === 'EVIL' ? `${payload.senderName} (악)` : payload.senderName,
+            senderSeat: sender?.seat,
+            senderAvatarUrl: sender?.avatarUrl,
+            text: payload.text,
+          },
+        ],
+      };
+    }),
 
   applyTimerSync: (payload) =>
     set((state) => {

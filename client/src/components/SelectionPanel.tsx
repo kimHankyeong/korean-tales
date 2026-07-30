@@ -51,7 +51,7 @@ export function SelectionPanel({
   const alivePlayers = players.filter((p) => p.alive).sort((a, b) => a.seat - b.seat);
 
   return (
-    <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center">
+    <div className="pointer-events-none fixed inset-0 z-[70] grid place-items-center">
       <motion.section
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}

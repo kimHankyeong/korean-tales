@@ -4,7 +4,7 @@ import { useGameStore } from './gameStore';
 
 const players = [
   { id: 'p1', name: '달래', seat: 1, alive: true, avatarUrl: null },
-  { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: null },
+  { id: 'p2', name: '바우', seat: 2, alive: true, avatarUrl: 'https://example.com/p2.png' },
 ];
 
 function baseState(overrides: Partial<PublicGameState>): PublicGameState {
@@ -50,5 +50,16 @@ describe('gameStore.applyGameState — 시스템 메시지 (11·12번 피드백)
       .getState()
       .messages.filter((m) => m.text === '2번의 최후의 발언').length;
     expect(count).toBe(1);
+  });
+});
+
+describe('gameStore.applyChatMessage — 채팅에도 프로필 사진이 반영되어야 함', () => {
+  it('발신자의 avatarUrl을 players 목록에서 찾아 메시지에 채워 넣는다', () => {
+    useGameStore.getState().applyGameState(baseState({ phase: 'day.discussion' }));
+    useGameStore
+      .getState()
+      .applyChatMessage({ senderId: 'p2', senderName: '바우', channel: 'PUBLIC', text: '안녕', sentAt: 0 });
+    const chat = useGameStore.getState().messages.find((m) => m.kind === 'CHAT' && m.text === '안녕');
+    expect(chat?.senderAvatarUrl).toBe('https://example.com/p2.png');
   });
 });
