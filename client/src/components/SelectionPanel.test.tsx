@@ -77,6 +77,20 @@ describe('투표/스킬 선택 공용 컴포넌트 (requirements 6번)', () => {
     expect(seats).toEqual(['2번', '5번', '9번']);
   });
 
+  it('확정 버튼을 누르면 "완료"로 바뀌고 다시 눌러도 onConfirm이 재호출되지 않는다 (클릭이 반영됐는지 알 수 없다는 피드백)', () => {
+    const onConfirm = vi.fn();
+    render(<SelectionPanel title="처형 투표" players={players} buttonLabel="투표하기" onConfirm={onConfirm} />);
+    fireEvent.click(screen.getByText('1번'));
+    const button = screen.getByRole('button', { name: '투표하기' });
+    fireEvent.click(button);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+
+    const doneButton = screen.getByRole('button', { name: '완료' }) as HTMLButtonElement;
+    expect(doneButton.disabled).toBe(true);
+    fireEvent.click(doneButton);
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it('disabledIds 대상은 선택할 수 없다', () => {
     const onConfirm = vi.fn();
     render(

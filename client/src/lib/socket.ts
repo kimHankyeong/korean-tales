@@ -44,9 +44,27 @@ export function myPlayerId(): string {
   return user ? `acct:${user.id}` : (getSocket().id ?? '');
 }
 
-/** ack 콜백이 있는 이벤트용 — payload가 없는 이벤트는 인자 생략 */
-export function emitWithAck<TResponse>(event: string, ...payload: unknown[]): Promise<TResponse> {
+/** 서버 ack가 이 시간 안에 안 오면 "시간 초과"로 간주하고 포기한다 (아래 emitWithAck 참고) */
+const ACK_TIMEOUT_MS = 8000;
+
+/**
+ * ack 콜백이 있는 이벤트용 — payload가 없는 이벤트는 인자 생략.
+ * 예전엔 타임아웃이 전혀 없어서, 재접속 중이거나 패킷이 유실돼 ack가 끝내 안 오면 이
+ * Promise가 영원히 pending 상태로 남았다 — "투표하기를 눌렀는데 반영이 안 됐다"처럼
+ * 버튼을 눌러도 성공도 실패도 아닌 채 아무 반응이 없는 것처럼 보이는 원인이었다.
+ * socket.io-client의 .timeout()으로 일정 시간 뒤 { ok: false, error: 'TIMEOUT' }으로
+ * 확정 응답을 만들어, 호출부(reportIfRejected 등)가 사용자에게 실패를 알리고 다시
+ * 시도하도록 유도할 수 있게 한다.
+ */
+export function emitWithAck<TResponse extends { ok: boolean; error?: string }>(
+  event: string,
+  ...payload: unknown[]
+): Promise<TResponse> {
   return new Promise((resolve) => {
-    getSocket().emit(event, ...payload, (response: TResponse) => resolve(response));
+    getSocket()
+      .timeout(ACK_TIMEOUT_MS)
+      .emit(event, ...payload, (err: Error | null, response: TResponse) => {
+        resolve(err ? ({ ok: false, error: 'TIMEOUT' } as TResponse) : response);
+      });
   });
 }

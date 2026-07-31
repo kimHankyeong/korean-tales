@@ -48,6 +48,10 @@ export function SelectionPanel({
   onForgo,
 }: SelectionPanelProps) {
   const [selected, setSelected] = useState<SelectionTarget | null>(null);
+  // 확정 버튼을 눌렀다는 시각 피드백 — 클릭 후에도 버튼 문구·상태가 그대로라 "안 눌리나?"로
+  // 오해하기 쉬웠다(10번 피드백과 같은 종류의 문제). 다음 페이즈로 넘어가면 이 패널 자체가
+  // 새 prompt로 교체되며 다시 마운트되므로 별도 초기화는 필요 없다
+  const [confirmed, setConfirmed] = useState(false);
   const alivePlayers = players.filter((p) => p.alive).sort((a, b) => a.seat - b.seat);
 
   return (
@@ -108,17 +112,25 @@ export function SelectionPanel({
         <div className="flex items-center justify-center gap-2 pb-1">
           <button
             type="button"
-            disabled={selected === null}
-            onClick={() => selected !== null && onConfirm(selected)}
-            className="rounded-lg bg-amber-600 px-6 py-1.5 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40 active:brightness-75"
+            disabled={selected === null || confirmed}
+            onClick={() => {
+              if (selected === null) return;
+              onConfirm(selected);
+              setConfirmed(true);
+            }}
+            className="rounded-lg bg-amber-600 px-6 py-1.5 text-sm font-bold text-white transition disabled:cursor-not-allowed disabled:opacity-40 disabled:saturate-50 active:brightness-75"
           >
-            {buttonLabel}
+            {confirmed ? '완료' : buttonLabel}
           </button>
           {allowForgo && (
             <button
               type="button"
-              onClick={() => onForgo?.()}
-              className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300 transition hover:bg-slate-700 active:brightness-75"
+              disabled={confirmed}
+              onClick={() => {
+                onForgo?.();
+                setConfirmed(true);
+              }}
+              className="rounded-lg border border-slate-500 px-4 py-1.5 text-sm text-slate-300 transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 active:brightness-75"
             >
               스킬 포기
             </button>

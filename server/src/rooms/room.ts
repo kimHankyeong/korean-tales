@@ -668,8 +668,22 @@ export class Room {
     // 공개 채팅 — 밤에는 전체 토론 페이즈가 없으므로 아무도 쓸 수 없다 (악 진영은 EVIL 채널 사용)
     if (isNight) return 'NOT_ALLOWED';
 
+    // 단독 발언 페이즈(7번·5번 섹션) — 클라이언트는 UI로만 막고 있었을 뿐 서버 검증이
+    // 없어서, 수정된 클라이언트나 직접 이벤트 전송으로 우회해 다른 사람 차례에 끼어들 수
+    // 있었다. 해당 발언자 본인 외에는 서버에서도 거부한다
+    const path = phasePath(snapshot.value);
+    if (path === 'firstMorning.appeal' && snapshot.context.appealQueue[0] !== senderId) {
+      return 'NOT_ALLOWED';
+    }
+    if (path === 'day.personalSpeech' && snapshot.context.speechQueue[0] !== senderId) {
+      return 'NOT_ALLOWED';
+    }
+    if (path === 'day.finalPlea' && snapshot.context.executionTargetId !== senderId) {
+      return 'NOT_ALLOWED';
+    }
+
     // 조언자 선출 전체 토론(7번 섹션) — 출마자만 발언, 출마하지 않은 유저는 관전만
-    if (phasePath(snapshot.value) === 'firstMorning.electionDiscussion' && !snapshot.context.candidates.includes(senderId)) {
+    if (path === 'firstMorning.electionDiscussion' && !snapshot.context.candidates.includes(senderId)) {
       return 'NOT_ALLOWED';
     }
 

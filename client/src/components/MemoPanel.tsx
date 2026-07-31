@@ -4,8 +4,11 @@
  * 서버에는 절대 전송되지 않는 순수 클라이언트 로컬 상태다(gameStore.memoLines).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useGameStore } from '../store/gameStore';
+
+/** 같은 메시지를 연속으로 보내는 걸 막는 쿨다운 — 내용(텍스트) 기준, 줄 위치와 무관하다 */
+const RESEND_COOLDOWN_MS = 5000;
 
 export function MemoPanel({
   onSendLine,
@@ -19,10 +22,25 @@ export function MemoPanel({
   const [draft, setDraft] = useState('');
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState('');
+  // 텍스트 → 다시 보낼 수 있게 되는 시각(epoch ms). 렌더는 아래 tick으로 주기적으로 갱신한다
+  const [resendableAt, setResendableAt] = useState<Record<string, number>>({});
+  const [, forceTick] = useState(0);
   const memoLines = useGameStore((s) => s.memoLines);
   const addMemoLine = useGameStore((s) => s.addMemoLine);
   const removeMemoLine = useGameStore((s) => s.removeMemoLine);
   const updateMemoLine = useGameStore((s) => s.updateMemoLine);
+
+  useEffect(() => {
+    if (!open) return;
+    const interval = setInterval(() => forceTick((n) => n + 1), 250);
+    return () => clearInterval(interval);
+  }, [open]);
+
+  function sendLine(text: string) {
+    if (Date.now() < (resendableAt[text] ?? 0)) return;
+    onSendLine(text);
+    setResendableAt((prev) => ({ ...prev, [text]: Date.now() + RESEND_COOLDOWN_MS }));
+  }
 
   function submitDraft(e: { preventDefault(): void }) {
     e.preventDefault();
@@ -131,20 +149,28 @@ export function MemoPanel({
                     className="flex items-start gap-1.5 rounded-lg border border-slate-700 bg-slate-800/60 px-2.5 py-1.5"
                   >
                     <span className="min-w-0 flex-1 break-words text-sm text-slate-100">{line}</span>
-                    <button
-                      type="button"
-                      disabled={!sendAllowed}
-                      onClick={() => onSendLine(line)}
-                      aria-label={`"${line}" 채팅으로 보내기`}
-                      title={
-                        sendAllowed
-                          ? '채팅으로 보내기'
-                          : '내 개인 발언 시간·전체 발언 시간, 또는 밤중 악 진영 채팅에서만 보낼 수 있어요'
-                      }
-                      className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-sky-700/80"
-                    >
-                      보내기
-                    </button>
+                    {(() => {
+                      const cooldownRemainingMs = (resendableAt[line] ?? 0) - Date.now();
+                      const onCooldown = cooldownRemainingMs > 0;
+                      return (
+                        <button
+                          type="button"
+                          disabled={!sendAllowed || onCooldown}
+                          onClick={() => sendLine(line)}
+                          aria-label={`"${line}" 채팅으로 보내기`}
+                          title={
+                            onCooldown
+                              ? '같은 메시지는 5초 뒤에 다시 보낼 수 있어요'
+                              : sendAllowed
+                                ? '채팅으로 보내기'
+                                : '내 개인 발언 시간·전체 발언 시간, 또는 밤중 악 진영 채팅에서만 보낼 수 있어요'
+                          }
+                          className="shrink-0 rounded bg-sky-700/80 px-1.5 py-0.5 text-[10px] font-bold text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-sky-700/80"
+                        >
+                          {onCooldown ? `${Math.ceil(cooldownRemainingMs / 1000)}초` : '보내기'}
+                        </button>
+                      );
+                    })()}
                     <button
                       type="button"
                       onClick={() => startEdit(i, line)}

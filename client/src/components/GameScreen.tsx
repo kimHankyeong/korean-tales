@@ -28,9 +28,15 @@ import { SoundSettingsModal } from './SoundSettingsModal';
 
 // 출마·투표·선택·스킬 사용 등 모든 확정 버튼에서 클릭했다는 청각 피드백을 준다(10번 피드백)
 // 서버가 ACTION_REJECTED를 돌려주면(guard가 조용히 거부한 경우) 토스트로 알려준다 —
-// 예전엔 이런 경우도 성공 ack만 와서 "눌렀는데 반영 안 됨"으로 보였다
+// 예전엔 이런 경우도 성공 ack만 와서 "눌렀는데 반영 안 됨"으로 보였다. TIMEOUT은
+// emitWithAck(lib/socket.ts)이 서버 ack를 못 받고 포기했을 때(재접속 중 유실 등)
+// 만들어내는 응답 — 이것도 예전엔 Promise가 영원히 안 풀려 조용히 아무 반응 없는
+// 것처럼 보였다
 function reportIfRejected(ack: { ok: boolean; error?: string }) {
-  if (!ack.ok && ack.error === 'ACTION_REJECTED') {
+  if (ack.ok) return;
+  if (ack.error === 'TIMEOUT') {
+    useGameStore.getState().setActionError('서버 응답이 없어요 — 연결을 확인하고 다시 눌러주세요');
+  } else if (ack.error === 'ACTION_REJECTED') {
     useGameStore.getState().setActionError('지금은 반영할 수 없어요 — 시간이 지났거나 이미 사용했을 수 있어요');
   }
 }
@@ -162,6 +168,15 @@ export function GameScreen() {
     !store.publicState.candidates.includes(store.myId);
   const chatLocked = (isNight && !isEvil) || isNonCandidateElectionDiscussion;
 
+  // 출마자 개인 어필 발언(firstMorning.appeal) — PublicGameState에는 현재 발언자가 없어
+  // (gamePrompts.ts 참고) 타이머 phaseKey("appeal:<playerId>")로만 판별할 수 있다. 개인
+  // 발언(day.personalSpeech)·최후의 변론과 같은 단독 발언 메커니즘을 그대로 재사용한다.
+  const appealSpeakerId =
+    store.publicState?.phase === 'firstMorning.appeal' && store.timer?.label.startsWith('appeal:')
+      ? store.timer.label.slice('appeal:'.length)
+      : null;
+  const effectiveCondemnedId = appealSpeakerId ?? store.condemnedId;
+
   function sendChatText(text: string) {
     void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text });
   }
@@ -218,8 +233,8 @@ export function GameScreen() {
           phase={store.phase}
           messages={store.messages}
           myId={store.myId}
-          condemnedId={store.condemnedId}
-          condemnedName={store.players.find((p) => p.id === store.condemnedId)?.name}
+          condemnedId={effectiveCondemnedId}
+          condemnedName={store.players.find((p) => p.id === effectiveCondemnedId)?.name}
           locked={chatLocked}
           lockedReason={
             isNonCandidateElectionDiscussion

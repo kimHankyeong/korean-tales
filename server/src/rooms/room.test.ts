@@ -551,6 +551,63 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(room.chat('u3', 'PUBLIC', '저는 구경만 할게요')).toBe('NOT_ALLOWED');
   });
 
+  it('출마자 개인 어필 발언은 그 차례의 발언자 본인만 채팅할 수 있다 (다른 출마자도 불가, 7번 섹션)', () => {
+    const { room } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    passNightZero(room); // → firstMorning.candidacy
+    const session = room.session!;
+    session.send({ type: 'CANDIDACY_APPLY', playerId: 'u1' });
+    session.send({ type: 'CANDIDACY_APPLY', playerId: 'u2' });
+    session.send({ type: 'TIME_UP' }); // candidacy → appeal (배정 번호 오름차순 — 좌석은 무작위 배정이라 u1이 먼저라는 보장은 없다)
+    expect(session.getSnapshot().matches({ firstMorning: 'appeal' })).toBe(true);
+    const speakerId = session.getSnapshot().context.appealQueue[0]!;
+    const otherCandidateId = ['u1', 'u2'].find((id) => id !== speakerId)!;
+
+    expect(room.chat(speakerId, 'PUBLIC', '저를 뽑아주세요')).toBeNull();
+    expect(room.chat(otherCandidateId, 'PUBLIC', '제 차례에 끼어들기')).toBe('NOT_ALLOWED'); // 다른 출마자도 불가
+    expect(room.chat('u3', 'PUBLIC', '구경')).toBe('NOT_ALLOWED');
+  });
+
+  it('낮 개인 발언은 그 차례의 발언자 본인만 채팅할 수 있다', () => {
+    const { room } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    passNightZero(room); // → firstMorning.candidacy
+    const session = room.session!;
+    session.send({ type: 'TIME_UP' }); // 출마자 없음 → day.personalSpeech
+    expect(session.getSnapshot().matches({ day: 'personalSpeech' })).toBe(true);
+    const speakerId = session.getSnapshot().context.speechQueue[0]!;
+    const otherId = ids.find((id) => id !== speakerId)!;
+
+    expect(room.chat(speakerId, 'PUBLIC', '제 차례입니다')).toBeNull();
+    expect(room.chat(otherId, 'PUBLIC', '끼어들기')).toBe('NOT_ALLOWED');
+  });
+
+  it('최후의 변론은 처형 대상자 본인만 채팅할 수 있다', () => {
+    const { room, emitter } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    const ids = Array.from({ length: 9 }, (_, i) => `u${i + 1}`);
+    const roles = rolesOf(emitter, ids);
+    const jeoseungId = ids.find((id) => roles[id]!.characterId === 'jeoseung')!;
+    passNightZero(room); // → firstMorning.candidacy
+    const session = room.session!;
+    session.send({ type: 'TIME_UP' }); // 출마자 없음 → day.personalSpeech
+    while (session.getSnapshot().matches({ day: 'personalSpeech' })) session.send({ type: 'TIME_UP' });
+    session.send({ type: 'TIME_UP' }); // 토론 → 투표
+    for (const id of ids) {
+      session.send({ type: 'VOTE', voterId: id, targetId: id === jeoseungId ? 'ABSTAIN' : jeoseungId });
+    }
+    session.send({ type: 'TIME_UP' }); // voteReveal → finalPlea
+    expect(session.getSnapshot().matches({ day: 'finalPlea' })).toBe(true);
+    const otherId = ids.find((id) => id !== jeoseungId)!;
+
+    expect(room.chat(jeoseungId, 'PUBLIC', '마지막 발언')).toBeNull();
+    expect(room.chat(otherId, 'PUBLIC', '끼어들기')).toBe('NOT_ALLOWED');
+  });
+
   it('투항 진행 상황은 같은 팀에게만 전송되고, 전원 동의 시 상대 팀이 승리한다', () => {
     const { room, emitter } = makeRoom();
     const { roles, ids } = startAndGoNight(room, emitter);

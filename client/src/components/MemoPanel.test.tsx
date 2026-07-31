@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoPanel } from './MemoPanel';
 import { useGameStore } from '../store/gameStore';
 
@@ -78,6 +78,29 @@ describe('메모장 (10번 피드백)', () => {
     render(<MemoPanel onSendLine={vi.fn()} sendAllowed />);
     fireEvent.click(screen.getByLabelText('메모장'));
     expect(screen.getByText('아직 메모가 없어요.')).toBeTruthy();
+  });
+
+  it('같은 메시지를 연속으로 보내면 5초간 다시 보낼 수 없고, 5초가 지나면 다시 보낼 수 있다', () => {
+    vi.useFakeTimers();
+    useGameStore.setState({ memoLines: ['반복 메시지'] });
+    const onSendLine = vi.fn();
+    render(<MemoPanel onSendLine={onSendLine} sendAllowed />);
+    fireEvent.click(screen.getByLabelText('메모장'));
+    const sendButton = screen.getByLabelText('"반복 메시지" 채팅으로 보내기') as HTMLButtonElement;
+
+    fireEvent.click(sendButton);
+    expect(onSendLine).toHaveBeenCalledTimes(1);
+    expect(sendButton.disabled).toBe(true);
+
+    fireEvent.click(sendButton); // 쿨다운 중 재클릭 — 무시
+    expect(onSendLine).toHaveBeenCalledTimes(1);
+
+    act(() => vi.advanceTimersByTime(5000));
+    expect(sendButton.disabled).toBe(false);
+
+    fireEvent.click(sendButton);
+    expect(onSendLine).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it('sendAllowed가 false면 "보내기" 버튼이 비활성화되고 눌러도 전송되지 않는다', () => {

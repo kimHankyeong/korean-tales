@@ -42,6 +42,14 @@ export function AppRouter() {
     const socket = connectSocket();
 
     function onRoomState(payload: Parameters<typeof applyRoomState>[0]) {
+      // 대기방 채팅과 인게임 채팅이 gameStore.messages를 공유하므로(RoomLobbyScreen·GameScreen
+      // 참고), 대기방에서 쓴 채팅이 그대로 게임 화면에 남지 않도록 게임이 막 시작되는
+      // 순간(inGame false→true 전이)에만 비운다. 이 시점엔 beginGame()이 chat:message를
+      // 보내지 않으므로(게임 시작 자체는 채팅을 만들지 않음) 다른 이벤트와 경쟁할 일이 없다.
+      const prevInGame = useRoomStore.getState().room?.inGame ?? false;
+      if (payload.inGame && !prevInGame) {
+        useGameStore.setState({ messages: [] });
+      }
       applyRoomState(payload);
     }
     function onConnectError(err: Error) {
