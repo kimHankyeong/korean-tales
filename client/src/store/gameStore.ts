@@ -172,11 +172,13 @@ export const useGameStore = create<GameUiState>((set, get) => ({
 
   setMyProfile: (profile) => set({ myProfile: profile }),
 
-  // role·adminRoster는 여기서 초기화하지 않는다 — 서버가 game:role/admin:roster를
-  // room:state보다 먼저 보내고, 이 리셋은 room:state 수신(=GameScreen 마운트) 이후에
-  // 실행되므로 이미 도착한 값을 지워버리게 된다. 관리자가 시작한 게임은 매번 새
-  // admin:roster를 보내주므로(가상 플레이어가 없어도) 다음 게임에서 자연히 갱신된다.
-  // AppRouter.tsx 참고.
+  // role·adminRoster는 애초에 이 함수가 초기화하지 않는다(관리자가 시작한 게임은 매번 새
+  // admin:roster를 보내주므로 다음 게임에서 자연히 갱신된다). 이 함수 자체도 GameScreen
+  // 마운트 시점에는 절대 호출하면 안 된다 — 서버가 game:state·timer:sync를 room:state
+  // (=GameScreen 마운트 트리거)보다 먼저 보내는 경우가 있어, 거기서 호출하면 이미 정상
+  // 도착한 값(예: 첫날 밤 악 토론 타이머)을 지워버리는 경쟁 상태가 생긴다. 대신 AppRouter.tsx
+  // 최초 마운트(소켓 연결 전)와 GameScreen.tsx의 restartSameRoom·goLobby(다음 게임이
+  // 시작되기 한참 전)에서만 호출한다.
   resetForRealGame: () =>
     set({
       publicState: null,

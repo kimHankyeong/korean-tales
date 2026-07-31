@@ -27,6 +27,12 @@ export function AppRouter() {
     void checkSession();
     // 로그인 화면부터 배경음악 시작 — 게임 시작 전까지는 아무 화면도 initBgm을 호출하지 않았음
     initBgm(useGameStore.getState().bgmVolume);
+    // 데모용 초기 목 데이터(MOCK_PLAYERS·안내 메시지) 정리 — 소켓이 연결되기 전인 여기서
+    // 딱 한 번만 실행해야 한다. 예전엔 GameScreen 마운트 시점에 실행했는데, 서버가 game:state·
+    // timer:sync를 room:state(=GameScreen 마운트 트리거)보다 먼저 보내는 바람에(game:role과
+    // 똑같은 순서 문제, 아래 AppRouter 소켓 리스너 주석 참고) 첫날 밤 악 토론 타이머처럼 이미
+    // 정상 도착한 값을 마운트 이펙트가 곧바로 지워버리는 경쟁 상태가 있었다.
+    useGameStore.getState().resetForRealGame();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

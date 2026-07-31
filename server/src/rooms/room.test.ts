@@ -534,6 +534,23 @@ describe('정보 은닉 스코프 — 조사 결과·악 채널·투항', () => 
     expect(room.chat(evilId, 'EVIL', '벌써?')).toBe('NOT_ALLOWED');
   });
 
+  it('조언자 선출 전체 토론은 출마자만 채팅할 수 있다 (7번 섹션)', () => {
+    const { room } = makeRoom();
+    fillRoom(room);
+    room.startGame('u1');
+    passNightZero(room); // → firstMorning.candidacy
+    const session = room.session!;
+    session.send({ type: 'CANDIDACY_APPLY', playerId: 'u1' });
+    session.send({ type: 'CANDIDACY_APPLY', playerId: 'u2' });
+    session.send({ type: 'TIME_UP' }); // candidacy → appeal
+    session.send({ type: 'TIME_UP' }); // appeal(u1) → appeal(u2)
+    session.send({ type: 'TIME_UP' }); // appeal(u2) → electionDiscussion
+    expect(session.getSnapshot().matches({ firstMorning: 'electionDiscussion' })).toBe(true);
+
+    expect(room.chat('u1', 'PUBLIC', '저를 뽑아주세요')).toBeNull();
+    expect(room.chat('u3', 'PUBLIC', '저는 구경만 할게요')).toBe('NOT_ALLOWED');
+  });
+
   it('투항 진행 상황은 같은 팀에게만 전송되고, 전원 동의 시 상대 팀이 승리한다', () => {
     const { room, emitter } = makeRoom();
     const { roles, ids } = startAndGoNight(room, emitter);

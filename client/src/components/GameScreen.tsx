@@ -74,10 +74,13 @@ export function GameScreen() {
     setActedOnPrompt(false);
   }, [store.publicState?.phase, store.publicState?.currentSpeakerId, store.publicState?.executionTargetId]);
 
-  // 로비 → 게임 진입 시 1회: 데모 잔여 상태 정리 + 계정 프로필 반영
+  // 로비 → 게임 진입 시 1회: 계정 프로필 반영 (데모 잔여 상태 정리는 여기서 하지 않는다 —
+  // 서버가 game:state·timer:sync를 room:state(=이 컴포넌트 마운트 트리거)보다 먼저 보내는데,
+  // 여기서 리셋하면 이미 정상 도착한 첫날 밤 타이머 등을 지워버리는 경쟁 상태가 생긴다.
+  // 대신 AppRouter.tsx 최초 마운트 시 1회, 그리고 다음 게임을 준비하는 restartSameRoom·
+  // goLobby에서 안전한 시점에 리셋한다.
   useEffect(() => {
     if (!user) return;
-    store.resetForRealGame();
     // 로그인 유저는 계정 id(acct:<userId>)가 서버 쪽 playerId다 — myPlayerId() 참고
     store.setMyId(myPlayerId());
     store.setMyProfile({ nickname: user.nickname, profileImageUrl: user.profileImageUrl });
@@ -94,9 +97,10 @@ export function GameScreen() {
   // 다시하기 — 방은 나가지 않고 결과 화면만 닫는다. 서버가 게임 종료 시 방을 자동 비공개
   // 전환 + 전원 준비 초기화해두므로, AppRouter가 곧바로 같은 방의 준비 화면을 보여준다.
   // 대기방 채팅창도 gameStore.messages를 그대로 재사용하므로(RoomLobbyScreen 참고), 방금 끝난
-  // 게임의 채팅 기록(악 진영 전용 채널 포함)이 새 대기방에 그대로 남지 않도록 함께 비운다
+  // 게임의 채팅·투표 결과 등 잔여 상태가 새 대기방·다음 게임에 남지 않도록 여기서 비운다 —
+  // 다음 game:state·timer:sync가 도착하기 한참 전(전원 재준비 필요)이라 경쟁 상태 없이 안전하다
   function restartSameRoom() {
-    useGameStore.setState({ gameOverResult: null, messages: [] });
+    useGameStore.getState().resetForRealGame();
   }
 
   async function agreeSurrenderClick() {
@@ -110,7 +114,7 @@ export function GameScreen() {
   }
 
   function goLobby() {
-    useGameStore.setState({ gameOverResult: null, messages: [] });
+    useGameStore.getState().resetForRealGame();
     getSocket().emit(SOCKET_EVENTS.roomLeave);
     leaveRoom();
   }
@@ -152,7 +156,11 @@ export function GameScreen() {
   // 밤에는 전체 공개 채팅이 없다 — 악 진영은 전용 채널로, 그 외는 채팅창 자체를 잠근다 (3번·4번 섹션)
   const isNight = store.phase === 'NIGHT';
   const isEvil = store.role?.faction === 'EVIL';
-  const chatLocked = isNight && !isEvil;
+  // 조언자 선출 전체 토론(7번 섹션) — 출마하지 않은 유저는 관전만 가능
+  const isNonCandidateElectionDiscussion =
+    store.publicState?.phase === 'firstMorning.electionDiscussion' &&
+    !store.publicState.candidates.includes(store.myId);
+  const chatLocked = (isNight && !isEvil) || isNonCandidateElectionDiscussion;
 
   function sendChatText(text: string) {
     void emitWithAck(SOCKET_EVENTS.chatSend, { channel: isNight ? 'EVIL' : 'PUBLIC', text });
@@ -213,7 +221,11 @@ export function GameScreen() {
           condemnedId={store.condemnedId}
           condemnedName={store.players.find((p) => p.id === store.condemnedId)?.name}
           locked={chatLocked}
-          lockedReason="밤에는 채팅할 수 없어요 (악 진영은 전용 채널로 대화해요)"
+          lockedReason={
+            isNonCandidateElectionDiscussion
+              ? '조언자 후보만 발언할 수 있어요 — 지금은 관전만 가능해요'
+              : '밤에는 채팅할 수 없어요 (악 진영은 전용 채널로 대화해요)'
+          }
           channel={isNight && isEvil ? 'EVIL' : 'PUBLIC'}
           timer={store.timer}
           teammateIds={store.role?.teammateIds}

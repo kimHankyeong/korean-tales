@@ -668,6 +668,11 @@ export class Room {
     // 공개 채팅 — 밤에는 전체 토론 페이즈가 없으므로 아무도 쓸 수 없다 (악 진영은 EVIL 채널 사용)
     if (isNight) return 'NOT_ALLOWED';
 
+    // 조언자 선출 전체 토론(7번 섹션) — 출마자만 발언, 출마하지 않은 유저는 관전만
+    if (phasePath(snapshot.value) === 'firstMorning.electionDiscussion' && !snapshot.context.candidates.includes(senderId)) {
+      return 'NOT_ALLOWED';
+    }
+
     this.emitter.toRoom(SOCKET_EVENTS.chatMessage, payload);
     return null;
   }
